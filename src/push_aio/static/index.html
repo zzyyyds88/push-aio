@@ -14,7 +14,7 @@
       <div class="login-card glass">
         <p class="eyebrow">Unified Push Platform</p>
         <h1>push-aio</h1>
-        <p class="lead">主通道 → 备用通道 → 紧急通道，三层故障切换的统一推送平台。</p>
+        <p class="lead">主通道组按顺序逐个尝试，全失败自动升级紧急通道组的统一推送平台。</p>
         <form id="login-form" class="form">
           <label>
             <span>API Key（与 .env 中 PUSH_AIO_API_KEY 一致）</span>
@@ -95,7 +95,7 @@
           <section class="panel glass">
             <div class="panel-head">
               <h2>渠道状态概览</h2>
-              <span class="hint">点击渠道可前往配置页编辑</span>
+              <span class="hint">前往「通知配置」页可编辑渠道</span>
             </div>
             <div id="dashboard-channels" class="list"></div>
           </section>
@@ -115,7 +115,7 @@
             <section class="panel glass">
               <div class="panel-head">
                 <h2>新增渠道</h2>
-                <span class="hint">支持备用组与紧急标记</span>
+                <span class="hint">新建后默认主通道组，紧急角色事后切换</span>
               </div>
               <form id="channel-form" class="form"></form>
             </section>
@@ -142,10 +142,11 @@
                     <option value="html">HTML</option>
                   </select>
                 </label>
-                <label>
-                  <span>测试渠道 ID（逗号分隔，留空=走全自动调度）</span>
-                  <input name="channel_ids" placeholder="例如：1,2,3" />
-                </label>
+                <details class="advanced">
+                  <summary>限定测试渠道（默认走全自动调度）</summary>
+                  <div id="notify-channel-picker" class="check-list"></div>
+                  <p class="meta">勾选要测试的渠道；不勾选则走完整调度链路（主→紧急）。</p>
+                </details>
                 <button type="submit">发送</button>
               </form>
               <div id="notify-result" class="result"></div>

@@ -107,7 +107,7 @@ function navigate(route) {
   });
   document.getElementById("page-title").textContent = ROUTE_TITLES[route];
   if (route === "dashboard") renderDashboard();
-  if (route === "channels") renderChannelsPage();
+  if (route === "channels") { renderChannelsPage(); renderNotifyChannelPicker(); }
   if (route === "settings") renderSettingsPage();
 }
 
@@ -344,11 +344,8 @@ function renderChannelForm() {
     </label>
     <div id="default-target-wrap" class="form"></div>
     <div id="config-fields" class="form"></div>
-    <label class="check">
-      <input type="checkbox" name="is_emergency" />
-      <span>标记为紧急通道（用于全失败升级）</span>
-    </label>
     <button type="submit">保存渠道</button>
+    <p class="meta">新建渠道默认加入主通道组末尾。需要作为兜底紧急通道时，在右侧渠道列表用"改为紧急"按钮切换。</p>
   `;
 
   const typeSelect = form.querySelector('select[name="type"]');
@@ -512,16 +509,47 @@ async function handleChannelAction(event) {
 }
 
 /* ============ 测试发送 ============ */
+function renderNotifyChannelPicker() {
+  // 渲染测试发送的渠道多选列表（默认折叠，不勾选=走全自动调度）
+  const container = document.getElementById("notify-channel-picker");
+  if (!container) return;
+  if (!state.channels.length) {
+    container.innerHTML = `<p class="meta">还没有渠道可测试</p>`;
+    return;
+  }
+  container.innerHTML = state.channels
+    .map((c) => {
+      const meta = state.metas.find((m) => m.type === c.type);
+      const label = meta ? meta.label : c.type;
+      const emTag = c.is_emergency ? `<span class="tag emergency">紧急</span>` : "";
+      const enTag = c.enabled
+        ? `<span class="tag ok">启用</span>`
+        : `<span class="tag bad">禁用</span>`;
+      return `
+        <label>
+          <input type="checkbox" value="${c.id}" data-pick="1" />
+          <span>${escapeHtml(c.name)} · ${escapeHtml(label)} ${enTag} ${emTag}</span>
+        </label>
+      `;
+    })
+    .join("");
+}
+
 async function submitNotifyForm(event) {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
-  const channelIds = parseChannelIds(formData.get("channel_ids"));
   const payload = {
     title: formData.get("title"),
     content: formData.get("content"),
     content_type: formData.get("content_type"),
   };
-  if (channelIds) payload.channel_ids = channelIds;
+  // 读取勾选的渠道 ID；未勾选则不传 channel_ids，走全自动调度
+  const picker = document.getElementById("notify-channel-picker");
+  if (picker) {
+    const checked = Array.from(picker.querySelectorAll('input[data-pick="1"]:checked'))
+      .map((i) => Number(i.value));
+    if (checked.length) payload.channel_ids = checked;
+  }
 
   try {
     const result = await api("/admin/api/notify", {
@@ -670,7 +698,7 @@ async function loadAll() {
   await Promise.all([loadStatus(), loadChannels(), loadLogs()]);
   // 刷新当前页
   if (state.route === "dashboard") renderDashboard();
-  if (state.route === "channels") renderChannelsPage();
+  if (state.route === "channels") { renderChannelsPage(); renderNotifyChannelPicker(); }
   if (state.route === "settings") renderSettingsPage();
 }
 
