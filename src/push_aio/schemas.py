@@ -8,6 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 ChannelType = str
 DeliveryRole = Literal["primary", "backup", "emergency"]
+# 错误分类：与 services/channels.py 中 ErrorKind 保持一致
+# none=成功 / rate_limit=限流 / auth=认证失败 / config=配置错误 / network=网络异常 / channel_error=业务错误
+ErrorKind = Literal["none", "rate_limit", "auth", "config", "network", "channel_error"]
 
 
 class BarkConfig(BaseModel):
@@ -158,6 +161,8 @@ class NotifyChannelResult(BaseModel):
     role: DeliveryRole = "primary"
     # 如果是 backup/emergency，记录它替代的原始主通道 id
     original_channel_id: int | None = None
+    # 错误分类：success=True 时为 "none"；失败时为具体类型，前端用于展示中文标签
+    error_kind: ErrorKind = "none"
 
 
 class NotifyChainGroup(BaseModel):
@@ -191,4 +196,5 @@ class DeliveryLogOut(BaseModel):
     target: str | None
     title: str
     detail: str
+    error_kind: str = "none"
     created_at: datetime

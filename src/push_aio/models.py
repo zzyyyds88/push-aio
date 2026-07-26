@@ -48,6 +48,9 @@ class DeliveryLog(Base):
     target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     detail: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 错误分类：none/rate_limit/auth/config/network/channel_error
+    # 由各渠道 SendResult.error_kind 写入；dispatcher 据此决定切换策略
+    error_kind: Mapped[str] = mapped_column(String(20), default="none", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )

@@ -9,15 +9,43 @@ import smtplib
 import time
 import urllib.parse
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from email import encoders
 from email.header import Header
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
-from typing import Any
+from typing import Any, Literal
 
 import requests
+
+
+# ==================== 错误分类 ====================
+# success=True 时 error_kind="none"
+# 失败时按原因分类，dispatcher 据此决定是否重试 / 是否立即切换
+#   rate_limit:    被限流（HTTP 429 / "频率过高" / "too many requests" 等）→ 不重试，立即切备用
+#   auth:          认证失败（token 错 / 401 / 403）→ 不重试，立即切备用
+#   config:        配置错误（缺必填 / 格式错）→ 不重试，立即切备用（需用户改配置）
+#   network:       网络异常（Timeout / ConnectionError）→ 重试 1 次后切备用
+#   channel_error: 渠道返回业务错误（余额不足 / 用户不存在 / 内容违规等）→ 不重试，立即切备用
+ErrorKind = Literal["none", "rate_limit", "auth", "config", "network", "channel_error"]
+
+
+@dataclass
+class SendResult:
+    """渠道发送统一返回结构。"""
+    success: bool
+    detail: str
+    error_kind: ErrorKind = "none"
+
+    @classmethod
+    def ok(cls, detail: str) -> "SendResult":
+        return cls(True, detail, "none")
+
+    @classmethod
+    def fail(cls, detail: str, error_kind: ErrorKind = "channel_error") -> "SendResult":
+        return cls(False, detail, error_kind)
 
 
 FieldSchema = dict[str, Any]
@@ -72,12 +100,60 @@ def json_or_text(response: requests.Response) -> Any:
         return response.text
 
 
-def ok_detail(name: str) -> tuple[bool, str]:
-    return True, f"{name} 推送成功"
+# ==================== 通用错误识别 ====================
+# 关键字命中即判为限流（不区分大小写）
+_RATE_LIMIT_KEYWORDS = (
+    "rate limit", "rate_limit", "ratelimit",
+    "too many requests", "too_many_requests",
+    "频率", "限流", "过于频繁", "请求过于频繁", "发送过于频繁",
+    "频率过高", "操作太频繁", "超出限制", "exceeded",
+    "quota", "throttl",
+)
+
+# 认证失败关键字
+_AUTH_KEYWORDS = (
+    "invalid token", "invalid_token", "token is invalid", "token invalid",
+    "authentication failed", "unauthorized", "forbidden",
+    "授权码错误", "认证失败", "鉴权失败", "令牌无效", "key 无效", "key无效",
+    "access denied", "permission denied",
+)
 
 
-def response_error(name: str, data: Any) -> tuple[bool, str]:
-    return False, f"{name} 返回异常: {data}"
+def classify_text(text: str) -> ErrorKind:
+    """根据返回文本识别错误类型（限流/认证/其他业务错误）。"""
+    lower = str(text).lower()
+    for kw in _RATE_LIMIT_KEYWORDS:
+        if kw in lower:
+            return "rate_limit"
+    for kw in _AUTH_KEYWORDS:
+        if kw in lower:
+            return "auth"
+    return "channel_error"
+
+
+def classify_response(*, status_code: int | None = None, body: Any = None) -> ErrorKind:
+    """根据 HTTP 状态码 + 响应体识别错误类型。
+
+    - 429 → rate_limit
+    - 401/403 → auth
+    - 其他状态码 + body 关键字命中 → 对应类型
+    - 都不命中 → channel_error
+    """
+    if status_code == 429:
+        return "rate_limit"
+    if status_code in (401, 403):
+        return "auth"
+    body_text = json.dumps(body, ensure_ascii=False) if not isinstance(body, str) else body
+    return classify_text(body_text)
+
+
+def ok_detail(name: str) -> SendResult:
+    return SendResult.ok(f"{name} 推送成功")
+
+
+def response_error(name: str, data: Any, *, status_code: int | None = None) -> SendResult:
+    error_kind = classify_response(status_code=status_code, body=data)
+    return SendResult.fail(f"{name} 返回异常: {data}", error_kind)
 
 
 class ChannelSender(ABC):
@@ -86,6 +162,9 @@ class ChannelSender(ABC):
     target_mode = "embedded"
     target_label: str | None = None
     config_schema: dict[str, FieldSchema] = {}
+    # 各渠道可覆盖：自己的 errcode → error_kind 映射
+    # 例如钉钉 130101 = 限流，310000 = 鉴权失败
+    errcode_map: dict[int, ErrorKind] = {}
 
     def validate_config(self, raw_config: dict[str, Any]) -> dict[str, Any]:
         config = dict(raw_config)
@@ -99,8 +178,14 @@ class ChannelSender(ABC):
         require(config, *[key for key, schema in self.config_schema.items() if schema.get("required")])
         return compact(config)
 
+    def classify_errcode(self, errcode: int | None) -> ErrorKind | None:
+        """子类覆盖 errcode_map 后，按业务 errcode 识别错误类型。"""
+        if errcode is None:
+            return None
+        return self.errcode_map.get(errcode)
+
     @abstractmethod
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         raise NotImplementedError
 
 
@@ -109,8 +194,8 @@ class ConsoleSender(ChannelSender):
     label = "控制台"
     config_schema = {}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
-        return True, f"{title}\n\n{content}"
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
+        return SendResult.ok(f"{title}\n\n{content}")
 
 
 class BarkSender(ChannelSender):
@@ -140,7 +225,7 @@ class BarkSender(ChannelSender):
         "bark_delete": field("删除消息 ID"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         url = config["bark_base_url"]
         if url.startswith("http") and config.get("bark_device_key") and not url.rstrip("/").endswith("/push"):
             parsed = urllib.parse.urlparse(url)
@@ -180,13 +265,29 @@ class BarkSender(ChannelSender):
         }.items():
             if config.get(source) not in (None, ""):
                 payload[dest] = config[source]
-        data = requests.post(url, json=payload, timeout=15).json()
-        return ok_detail(self.label) if data.get("code") == 200 else response_error(self.label, data)
+        response = requests.post(url, json=payload, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("code") == 200:
+            return ok_detail(self.label)
+        # Bark 自部署服务常见错误：400 设备 key 无效 / 429 限流
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class DingtalkSender(ChannelSender):
     type_name = "dingtalk_bot"
     label = "钉钉机器人"
+    # 钉钉 errcode: 130101 = 限流(发送频率过高)；310000 = token无效；400102 = 不存在的token
+    errcode_map = {
+        130101: "rate_limit",
+        130102: "rate_limit",
+        310000: "auth",
+        400102: "auth",
+        400013: "auth",
+        88: "rate_limit",  # 发送频率超限
+    }
     config_schema = {
         "dd_bot_token": field("机器人 access_token", required=True, secret=True),
         "dd_bot_secret": field("签名密钥", secret=True),
@@ -200,7 +301,7 @@ class DingtalkSender(ChannelSender):
         "dd_payload": field("原始钉钉 payload JSON；填写后优先使用"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         extra = ""
         if config.get("dd_bot_secret"):
             timestamp = str(round(time.time() * 1000))
@@ -224,13 +325,30 @@ class DingtalkSender(ChannelSender):
                 payload = {"msgtype": "feedCard", "feedCard": {"links": parse_json_value(config.get("dd_feed_links"), [])}}
             else:
                 payload = {"msgtype": "text", "text": {"content": f"{title}\n\n{content}"}}
-        data = requests.post(url, json=payload, timeout=15).json()
-        return ok_detail(self.label) if data.get("errcode") == 0 else response_error(self.label, data)
+        response = requests.post(url, json=payload, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("errcode") == 0:
+            return ok_detail(self.label)
+        # 优先用 errcode_map
+        errcode = data.get("errcode") if isinstance(data, dict) else None
+        kind = self.classify_errcode(errcode) or classify_response(status_code=response.status_code, body=data)
+        return SendResult.fail(f"{self.label} 返回异常: {data}", kind)
 
 
 class FeishuSender(ChannelSender):
     type_name = "feishu_bot"
     label = "飞书/Lark 机器人"
+    # 飞书 code: 130102 = 限流；99991663 = token无效；99991664 = app未授权
+    errcode_map = {
+        130102: "rate_limit",
+        99991663: "auth",
+        99991664: "auth",
+        99991661: "auth",
+        99991668: "auth",
+    }
     config_schema = {
         "fskey": field("Webhook key 或完整 URL", required=True, secret=True),
         "fssecret": field("签名密钥", secret=True),
@@ -240,7 +358,7 @@ class FeishuSender(ChannelSender):
         "fs_payload": field("原始飞书 payload JSON；填写后优先使用"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         url = config["fskey"] if config["fskey"].startswith("http") else f"https://open.feishu.cn/open-apis/bot/v2/hook/{config['fskey']}"
         payload = parse_json_value(config.get("fs_payload"))
         if not payload:
@@ -255,8 +373,16 @@ class FeishuSender(ChannelSender):
             timestamp = str(int(time.time()))
             sign = hmac.new(f"{timestamp}\n{config['fssecret']}".encode(), digestmod=hashlib.sha256).digest()
             payload.update({"timestamp": timestamp, "sign": base64.b64encode(sign).decode()})
-        data = requests.post(url, json=payload, timeout=15).json()
-        return ok_detail(self.label) if data.get("StatusCode") == 0 or data.get("code") == 0 else response_error(self.label, data)
+        response = requests.post(url, json=payload, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and (data.get("StatusCode") == 0 or data.get("code") == 0):
+            return ok_detail(self.label)
+        code = data.get("code") if isinstance(data, dict) else None
+        kind = self.classify_errcode(code) or classify_response(status_code=response.status_code, body=data)
+        return SendResult.fail(f"{self.label} 返回异常: {data}", kind)
 
 
 class GoCqHttpSender(ChannelSender):
@@ -268,13 +394,19 @@ class GoCqHttpSender(ChannelSender):
         "gobot_token": field("access_token", secret=True),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         params = {"message": f"标题:{title}\n内容:{content}"}
         if config.get("gobot_token"):
             params["access_token"] = config["gobot_token"]
         url = f"{config['gobot_url']}?{config['gobot_qq']}"
-        data = requests.get(url, params=params, timeout=15).json()
-        return ok_detail(self.label) if data.get("status") == "ok" or data.get("retcode") == 0 else response_error(self.label, data)
+        response = requests.get(url, params=params, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and (data.get("status") == "ok" or data.get("retcode") == 0):
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class GotifySender(ChannelSender):
@@ -287,13 +419,19 @@ class GotifySender(ChannelSender):
         "gotify_extras": field("extras JSON"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         payload = {"title": title, "message": content, "priority": config.get("gotify_priority", 0)}
         extras = parse_json_value(config.get("gotify_extras"))
         if extras:
             payload["extras"] = extras
-        data = requests.post(f"{config['gotify_url'].rstrip('/')}/message", params={"token": config["gotify_token"]}, json=payload, timeout=15).json()
-        return ok_detail(self.label) if data.get("id") else response_error(self.label, data)
+        response = requests.post(f"{config['gotify_url'].rstrip('/')}/message", params={"token": config["gotify_token"]}, json=payload, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("id"):
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class IGotSender(ChannelSender):
@@ -301,9 +439,15 @@ class IGotSender(ChannelSender):
     label = "iGot"
     config_schema = {"igot_push_key": field("iGot push key", required=True, secret=True)}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
-        data = requests.post(f"https://push.hellyw.com/{config['igot_push_key']}", data={"title": title, "content": content}, timeout=15).json()
-        return ok_detail(self.label) if data.get("ret") == 0 else response_error(self.label, data)
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
+        response = requests.post(f"https://push.hellyw.com/{config['igot_push_key']}", data={"title": title, "content": content}, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("ret") == 0:
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class ServerChanSender(ChannelSender):
@@ -311,11 +455,17 @@ class ServerChanSender(ChannelSender):
     label = "Server 酱"
     config_schema = {"push_key": field("SendKey", required=True, secret=True)}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         match = re.match(r"sctp(\d+)t", config["push_key"])
         url = f"https://{match.group(1)}.push.ft07.com/send/{config['push_key']}.send" if match else f"https://sctapi.ftqq.com/{config['push_key']}.send"
-        data = requests.post(url, data={"text": title, "desp": content.replace("\n", "\n\n")}, timeout=15).json()
-        return ok_detail(self.label) if data.get("errno") == 0 or data.get("code") == 0 else response_error(self.label, data)
+        response = requests.post(url, data={"text": title, "desp": content.replace("\n", "\n\n")}, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and (data.get("errno") == 0 or data.get("code") == 0):
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class PushDeerSender(ChannelSender):
@@ -326,10 +476,16 @@ class PushDeerSender(ChannelSender):
         "deer_url": field("自定义 API URL"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         url = config.get("deer_url") or "https://api2.pushdeer.com/message/push"
-        data = requests.post(url, data={"text": title, "desp": content, "type": "markdown", "pushkey": config["deer_key"]}, timeout=15).json()
-        return ok_detail(self.label) if data.get("content", {}).get("result") else response_error(self.label, data)
+        response = requests.post(url, data={"text": title, "desp": content, "type": "markdown", "pushkey": config["deer_key"]}, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("content", {}).get("result"):
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class SynologyChatSender(ChannelSender):
@@ -337,16 +493,25 @@ class SynologyChatSender(ChannelSender):
     label = "Synology Chat"
     config_schema = {"chat_url": field("Chat webhook URL", required=True), "chat_token": field("Token，可留空如果 URL 已包含", secret=True)}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         url = config["chat_url"] + config.get("chat_token", "")
         response = requests.post(url, data="payload=" + json.dumps({"text": title + "\n" + content}), timeout=15)
         data = json_or_text(response)
-        return ok_detail(self.label) if response.status_code == 200 else response_error(self.label, data)
+        if response.status_code == 200:
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class PushPlusSender(ChannelSender):
     type_name = "pushplus"
     label = "PushPlus"
+    # PushPlus code: 900 = 限流（今日推送次数已达上限）；903 = token无效
+    errcode_map = {
+        900: "rate_limit",
+        901: "rate_limit",
+        903: "auth",
+        902: "auth",
+    }
     config_schema = {
         "push_plus_token": field("用户令牌", required=True, secret=True),
         "push_plus_user": field("群组编码"),
@@ -357,14 +522,22 @@ class PushPlusSender(ChannelSender):
         "push_plus_to": field("好友令牌/企业微信用户 ID"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
-        data = requests.post("https://www.pushplus.plus/send", json={
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
+        response = requests.post("https://www.pushplus.plus/send", json={
             "token": config["push_plus_token"], "title": title, "content": content,
             "topic": config.get("push_plus_user", ""), "template": config.get("push_plus_template", "html"),
             "channel": config.get("push_plus_channel", "wechat"), "webhook": config.get("push_plus_webhook", ""),
             "callbackUrl": config.get("push_plus_callback_url", ""), "to": config.get("push_plus_to", ""),
-        }, timeout=15).json()
-        return ok_detail(self.label) if data.get("code") == 200 else response_error(self.label, data)
+        }, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("code") == 200:
+            return ok_detail(self.label)
+        code = data.get("code") if isinstance(data, dict) else None
+        kind = self.classify_errcode(code) or classify_response(status_code=response.status_code, body=data)
+        return SendResult.fail(f"{self.label} 返回异常: {data}", kind)
 
 
 class WePlusSender(ChannelSender):
@@ -376,10 +549,16 @@ class WePlusSender(ChannelSender):
         "we_plus_bot_version": field("版本", default="pro"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         template = "html" if len(content) > 800 else "txt"
-        data = requests.post("https://www.weplusbot.com/send", json={"token": config["we_plus_bot_token"], "title": title, "content": content, "template": template, "receiver": config.get("we_plus_bot_receiver", ""), "version": config.get("we_plus_bot_version", "pro")}, timeout=15).json()
-        return ok_detail(self.label) if data.get("code") == 200 else response_error(self.label, data)
+        response = requests.post("https://www.weplusbot.com/send", json={"token": config["we_plus_bot_token"], "title": title, "content": content, "template": template, "receiver": config.get("we_plus_bot_receiver", ""), "version": config.get("we_plus_bot_version", "pro")}, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("code") == 200:
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class QmsgSender(ChannelSender):
@@ -387,14 +566,29 @@ class QmsgSender(ChannelSender):
     label = "Qmsg 酱"
     config_schema = {"qmsg_key": field("QMSG_KEY", required=True, secret=True), "qmsg_type": field("QMSG_TYPE", required=True)}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
-        data = requests.post(f"https://qmsg.zendee.cn/{config['qmsg_type']}/{config['qmsg_key']}", params={"msg": f"{title}\n\n{content.replace('----', '-')}"}, timeout=15).json()
-        return ok_detail(self.label) if data.get("code") == 0 else response_error(self.label, data)
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
+        response = requests.post(f"https://qmsg.zendee.cn/{config['qmsg_type']}/{config['qmsg_key']}", params={"msg": f"{title}\n\n{content.replace('----', '-')}"}, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("code") == 0:
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class WeComBotSender(ChannelSender):
     type_name = "wecom_bot"
     label = "企业微信机器人"
+    # 企业微信 errcode: 45009 = 接口调用频率限制；41001 = token无效；93000 = webhook失效
+    errcode_map = {
+        45009: "rate_limit",
+        45100: "rate_limit",
+        41001: "auth",
+        41004: "auth",
+        93000: "auth",
+        93001: "auth",
+    }
     config_schema = {
         "qywx_key": field("机器人 key", required=True, secret=True),
         "qywx_origin": field("企业微信 API Origin", default="https://qyapi.weixin.qq.com"),
@@ -403,7 +597,7 @@ class WeComBotSender(ChannelSender):
         "qywx_payload": field("原始企业微信机器人 payload JSON；填写后优先使用"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         origin = config.get("qywx_origin") or "https://qyapi.weixin.qq.com"
         payload = parse_json_value(config.get("qywx_payload"))
         if not payload:
@@ -412,35 +606,67 @@ class WeComBotSender(ChannelSender):
                 payload = {"msgtype": "markdown", "markdown": {"content": config.get("qywx_markdown") or f"## {title}\n\n{content}"}}
             else:
                 payload = {"msgtype": "text", "text": {"content": f"{title}\n\n{content}"}}
-        data = requests.post(f"{origin}/cgi-bin/webhook/send?key={config['qywx_key']}", json=payload, timeout=15).json()
-        return ok_detail(self.label) if data.get("errcode") == 0 else response_error(self.label, data)
+        response = requests.post(f"{origin}/cgi-bin/webhook/send?key={config['qywx_key']}", json=payload, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("errcode") == 0:
+            return ok_detail(self.label)
+        errcode = data.get("errcode") if isinstance(data, dict) else None
+        kind = self.classify_errcode(errcode) or classify_response(status_code=response.status_code, body=data)
+        return SendResult.fail(f"{self.label} 返回异常: {data}", kind)
 
 
 class WeComAppSender(ChannelSender):
     type_name = "wecom_app"
     label = "企业微信应用"
+    errcode_map = {
+        45009: "rate_limit",
+        42001: "auth",  # access_token 过期
+        40014: "auth",  # token 无效
+        41001: "auth",
+    }
     config_schema = {"qywx_am": field("corpid,corpsecret,touser,agentid[,media_id]", required=True, secret=True), "qywx_origin": field("企业微信 API Origin", default="https://qyapi.weixin.qq.com")}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         parts = [item.strip() for item in config["qywx_am"].split(",")]
         if len(parts) not in (4, 5):
             raise ValueError("qywx_am 格式必须为 corpid,corpsecret,touser,agentid[,media_id]")
         corpid, corpsecret, touser, agentid = parts[:4]
         media_id = parts[4] if len(parts) == 5 else ""
         origin = config.get("qywx_origin") or "https://qyapi.weixin.qq.com"
-        token = requests.post(f"{origin}/cgi-bin/gettoken", params={"corpid": corpid, "corpsecret": corpsecret}, timeout=15).json()["access_token"]
+        token_resp = requests.post(f"{origin}/cgi-bin/gettoken", params={"corpid": corpid, "corpsecret": corpsecret}, timeout=15).json()
+        token = token_resp.get("access_token")
+        if not token:
+            kind = self.classify_errcode(token_resp.get("errcode")) or "auth"
+            return SendResult.fail(f"{self.label} 获取 access_token 失败: {token_resp}", kind)
         payload: dict[str, Any] = {"touser": touser, "agentid": agentid, "safe": "0"}
         if media_id:
             payload.update({"msgtype": "mpnews", "mpnews": {"articles": [{"title": title, "thumb_media_id": media_id, "author": "push-aio", "content_source_url": "", "content": content.replace("\n", "<br/>"), "digest": content}]}})
         else:
             payload.update({"msgtype": "text", "text": {"content": f"{title}\n\n{content}"}})
-        data = requests.post(f"{origin}/cgi-bin/message/send?access_token={token}", json=payload, timeout=15).json()
-        return ok_detail(self.label) if data.get("errcode") == 0 or data.get("errmsg") == "ok" else response_error(self.label, data)
+        response = requests.post(f"{origin}/cgi-bin/message/send?access_token={token}", json=payload, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and (data.get("errcode") == 0 or data.get("errmsg") == "ok"):
+            return ok_detail(self.label)
+        errcode = data.get("errcode") if isinstance(data, dict) else None
+        kind = self.classify_errcode(errcode) or classify_response(status_code=response.status_code, body=data)
+        return SendResult.fail(f"{self.label} 返回异常: {data}", kind)
 
 
 class TelegramSender(ChannelSender):
     type_name = "telegram_bot"
     label = "Telegram Bot"
+    # Telegram error_code: 429 = 限流；401 = token无效；403 = forbidden
+    errcode_map = {
+        429: "rate_limit",
+        401: "auth",
+        403: "auth",
+    }
     config_schema = {
         "tg_bot_token": field("Bot token", required=True, secret=True),
         "tg_user_id": field("Chat ID", required=True),
@@ -456,7 +682,7 @@ class TelegramSender(ChannelSender):
         "tg_reply_markup": field("reply_markup JSON"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         api_host = config.get("tg_api_host") or "https://api.telegram.org"
         proxies = None
         if config.get("tg_proxy_host") and config.get("tg_proxy_port"):
@@ -478,8 +704,17 @@ class TelegramSender(ChannelSender):
                 payload[target_key] = config[key]
         if config.get("tg_reply_markup"):
             payload["reply_markup"] = parse_json_value(config["tg_reply_markup"])
-        data = requests.post(f"{api_host}/bot{config['tg_bot_token']}/sendMessage", json=payload, proxies=proxies, timeout=15).json()
-        return ok_detail(self.label) if data.get("ok") else response_error(self.label, data)
+        response = requests.post(f"{api_host}/bot{config['tg_bot_token']}/sendMessage", json=payload, proxies=proxies, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("ok"):
+            return ok_detail(self.label)
+        # Telegram 用 error_code 字段
+        code = data.get("error_code") if isinstance(data, dict) else None
+        kind = self.classify_errcode(code) or classify_response(status_code=response.status_code, body=data)
+        return SendResult.fail(f"{self.label} 返回异常: {data}", kind)
 
 
 class AibotkSender(ChannelSender):
@@ -487,13 +722,19 @@ class AibotkSender(ChannelSender):
     label = "智能微秘书"
     config_schema = {"aibotk_key": field("API key", required=True, secret=True), "aibotk_type": field("room 或 contact", required=True), "aibotk_name": field("群名或好友昵称", required=True)}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         is_room = config["aibotk_type"] == "room"
         url = "https://api-bot.aibotk.com/openapi/v1/chat/room" if is_room else "https://api-bot.aibotk.com/openapi/v1/chat/contact"
-        data = {"apiKey": config["aibotk_key"], "message": {"type": 1, "content": f"【青龙快讯】\n\n{title}\n{content}"}}
-        data["roomName" if is_room else "name"] = config["aibotk_name"]
-        res = requests.post(url, json=data, timeout=15).json()
-        return ok_detail(self.label) if res.get("code") == 0 else response_error(self.label, res)
+        data_payload = {"apiKey": config["aibotk_key"], "message": {"type": 1, "content": f"【青龙快讯】\n\n{title}\n{content}"}}
+        data_payload["roomName" if is_room else "name"] = config["aibotk_name"]
+        response = requests.post(url, json=data_payload, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("code") == 0:
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class EmailSender(ChannelSender):
@@ -516,7 +757,7 @@ class EmailSender(ChannelSender):
             config["smtp_host"] = str(config["imap_host"]).replace("imap.", "smtp.", 1)
         return super().validate_config(config)
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         to_addrs = split_semicolon(target) or [config["email"]]
         content_type = "html" if config.get("_content_type") == "html" else "plain"
         attachments = config.get("_attachments") or []
@@ -551,8 +792,22 @@ class EmailSender(ChannelSender):
                 client.starttls()
             client.login(config["email"], config["auth_code"])
             client.sendmail(config["email"], to_addrs, message.as_string())
+        except smtplib.SMTPAuthenticationError as exc:
+            # 535 认证失败 / 535 授权码错误
+            return SendResult.fail(f"{self.label} 认证失败: {exc}", "auth")
+        except smtplib.SMTPConnectError as exc:
+            return SendResult.fail(f"{self.label} 连接失败: {exc}", "network")
+        except smtplib.SMTPServerDisconnected as exc:
+            return SendResult.fail(f"{self.label} 服务器断开: {exc}", "network")
+        except smtplib.SMTPResponseException as exc:
+            # 4xx 临时错误（含限流），5xx 永久错误
+            kind = "rate_limit" if 400 <= exc.smtp_code < 500 else "channel_error"
+            return SendResult.fail(f"{self.label} 返回异常: {exc.smtp_code} {exc.smtp_error.decode(errors='ignore') if isinstance(exc.smtp_error, bytes) else exc.smtp_error}", kind)
         finally:
-            client.quit()
+            try:
+                client.quit()
+            except Exception:
+                pass
         return ok_detail(self.label)
 
 
@@ -561,9 +816,11 @@ class PushMeSender(ChannelSender):
     label = "PushMe"
     config_schema = {"pushme_key": field("PushMe key", required=True, secret=True), "pushme_url": field("PushMe URL", default="https://push.i-i.me/")}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         response = requests.post(config.get("pushme_url") or "https://push.i-i.me/", data={"push_key": config["pushme_key"], "title": title, "content": content}, timeout=15)
-        return ok_detail(self.label) if response.status_code == 200 and response.text == "success" else response_error(self.label, f"{response.status_code} {response.text}")
+        if response.status_code == 200 and response.text == "success":
+            return ok_detail(self.label)
+        return response_error(self.label, f"{response.status_code} {response.text}", status_code=response.status_code)
 
 
 class ChronocatSender(ChannelSender):
@@ -571,7 +828,7 @@ class ChronocatSender(ChannelSender):
     label = "Chronocat"
     config_schema = {"chronocat_url": field("Chronocat URL", required=True), "chronocat_qq": field("user_id=... 或 group_id=...", required=True), "chronocat_token": field("Token", required=True, secret=True)}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         user_ids = re.findall(r"user_id=(\d+)", config["chronocat_qq"])
         group_ids = re.findall(r"group_id=(\d+)", config["chronocat_qq"])
         url = f"{config['chronocat_url'].rstrip('/')}/api/message/send"
@@ -582,9 +839,9 @@ class ChronocatSender(ChannelSender):
                 payload = {"peer": {"chatType": chat_type, "peerUin": chat_id}, "elements": [{"elementType": 1, "textElement": {"content": f"{title}\n\n{content}"}}]}
                 response = requests.post(url, headers=headers, json=payload, timeout=15)
                 if response.status_code != 200:
-                    return response_error(self.label, response.text)
+                    return response_error(self.label, response.text, status_code=response.status_code)
                 sent += 1
-        return (ok_detail(self.label) if sent else (False, "Chronocat 未匹配到 user_id 或 group_id"))
+        return ok_detail(self.label) if sent else SendResult.fail("Chronocat 未匹配到 user_id 或 group_id", "config")
 
 
 def parse_headers(headers: str | None) -> dict[str, str]:
@@ -613,7 +870,7 @@ class WebhookSender(ChannelSender):
         "webhook_body": field("请求体，支持 $title/$content"),
     }
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         if "$title" not in config["webhook_url"] and "$title" not in config.get("webhook_body", ""):
             raise ValueError("URL 或 Body 中必须包含 $title")
         headers = parse_headers(config.get("webhook_headers"))
@@ -622,7 +879,9 @@ class WebhookSender(ChannelSender):
         url = config["webhook_url"].replace("$title", urllib.parse.quote_plus(title)).replace("$content", urllib.parse.quote_plus(content))
         body = replace_vars(config.get("webhook_body", ""), title, content) if config.get("webhook_body") else None
         response = requests.request(config["webhook_method"].upper(), url, headers=headers, data=body, timeout=15)
-        return ok_detail(self.label) if 200 <= response.status_code < 300 else response_error(self.label, f"{response.status_code} {response.text}")
+        if 200 <= response.status_code < 300:
+            return ok_detail(self.label)
+        return response_error(self.label, f"{response.status_code} {response.text}", status_code=response.status_code)
 
 
 class NtfySender(ChannelSender):
@@ -649,7 +908,7 @@ class NtfySender(ChannelSender):
     def encode_rfc2047(text: str) -> str:
         return f"=?utf-8?B?{base64.b64encode(text.encode()).decode()}?="
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         headers = {"Title": self.encode_rfc2047(title), "Priority": str(config.get("ntfy_priority", "3")), "Icon": "https://qn.whyour.cn/logo.png"}
         for key, header in {
             "ntfy_tags": "Tags",
@@ -670,7 +929,9 @@ class NtfySender(ChannelSender):
         if config.get("ntfy_actions"):
             headers["Actions"] = self.encode_rfc2047(config["ntfy_actions"])
         response = requests.post(f"{(config.get('ntfy_url') or 'https://ntfy.sh').rstrip('/')}/{config['ntfy_topic']}", data=content.encode(), headers=headers, timeout=15)
-        return ok_detail(self.label) if response.status_code == 200 else response_error(self.label, response.text)
+        if response.status_code == 200:
+            return ok_detail(self.label)
+        return response_error(self.label, response.text, status_code=response.status_code)
 
 
 class WxPusherSender(ChannelSender):
@@ -678,13 +939,19 @@ class WxPusherSender(ChannelSender):
     label = "WxPusher"
     config_schema = {"wxpusher_app_token": field("appToken", required=True, secret=True), "wxpusher_topic_ids": field("Topic IDs，多个用 ; 分隔"), "wxpusher_uids": field("UIDs，多个用 ; 分隔")}
 
-    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> tuple[bool, str]:
+    def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
         topic_ids = [int(item) for item in split_semicolon(config.get("wxpusher_topic_ids"))]
         uids = split_semicolon(config.get("wxpusher_uids"))
         if not topic_ids and not uids:
             raise ValueError("wxpusher_topic_ids 和 wxpusher_uids 至少配置一个")
-        data = requests.post("https://wxpusher.zjiecode.com/api/send/message", json={"appToken": config["wxpusher_app_token"], "content": f"<h1>{title}</h1><br/><div style='white-space: pre-wrap;'>{content}</div>", "summary": title, "contentType": 2, "topicIds": topic_ids, "uids": uids, "verifyPayType": 0}, timeout=15).json()
-        return ok_detail(self.label) if data.get("code") == 1000 else response_error(self.label, data)
+        response = requests.post("https://wxpusher.zjiecode.com/api/send/message", json={"appToken": config["wxpusher_app_token"], "content": f"<h1>{title}</h1><br/><div style='white-space: pre-wrap;'>{content}</div>", "summary": title, "contentType": 2, "topicIds": topic_ids, "uids": uids, "verifyPayType": 0}, timeout=15)
+        try:
+            data = response.json()
+        except ValueError:
+            data = response.text
+        if isinstance(data, dict) and data.get("code") == 1000:
+            return ok_detail(self.label)
+        return response_error(self.label, data, status_code=response.status_code)
 
 
 class ChannelRegistry:

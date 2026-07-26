@@ -15,10 +15,10 @@ from ..schemas import (
     NotifyRequest,
     NotifyResponse,
 )
-from .channels import registry
+from .channels import SendResult, registry
 
 
-# 视为瞬时异常：值得重试一次
+# 视为瞬时异常：值得重试一次（仅 network 类才重试，限流/认证/配置/业务错误都不重试）
 _TRANSIENT_EXCEPTIONS = (
     requests.exceptions.Timeout,
     requests.exceptions.ConnectionError,
@@ -29,8 +29,14 @@ _TRANSIENT_EXCEPTIONS = (
 def _send_one(
     channel: Channel,
     payload: NotifyRequest | AdminNotifyRequest,
-) -> tuple[bool, str, str | None]:
-    """对单通道执行 1+1 重试发送，返回 (success, detail, target)。"""
+) -> SendResult:
+    """对单通道执行 1+1 重试发送。
+
+    决策：
+    - 网络异常（Timeout/ConnectionError）→ 重试 1 次
+    - 限流/认证/配置/业务错误 → 不重试，直接返回（让调度器切换备用/紧急）
+    - 成功 → 立即返回
+    """
     sender = registry.get(channel.type)
     target = channel.default_target
     config = dict(channel.config)
@@ -41,23 +47,27 @@ def _send_one(
             attachment.model_dump() for attachment in (payload.attachments or [])
         ]
 
-    last_error = "未知错误"
+    last_result: SendResult | None = None
     for attempt in range(2):  # 首次 + 1 次瞬时重试
         try:
             config_validated = registry.validate(channel.type, config)
-            success, detail = sender.send(
+            return sender.send(
                 title=payload.title,
                 content=payload.content,
                 config=config_validated,
                 target=target,
             )
-            return success, detail, target
         except _TRANSIENT_EXCEPTIONS as exc:
-            last_error = f"网络异常: {exc}"
+            # 仅网络异常才重试
+            last_result = SendResult.fail(f"网络异常: {exc}", "network")
             continue
+        except ValueError as exc:
+            # 配置错误（缺必填/格式错）→ 不重试
+            return SendResult.fail(f"配置错误: {exc}", "config")
         except Exception as exc:
-            return False, str(exc), target
-    return False, last_error, target
+            # 其他未知异常 → 视为业务错误，不重试
+            return SendResult.fail(str(exc), "channel_error")
+    return last_result or SendResult.fail("未知错误", "channel_error")
 
 
 def _attempt(
@@ -81,9 +91,10 @@ def _attempt(
             detail=f"复用本次请求已尝试结果：{cached.detail}",
             role=role,
             original_channel_id=original_channel_id,
+            error_kind=cached.error_kind,
         )
 
-    success, detail, target = _send_one(channel, payload)
+    result = _send_one(channel, payload)
 
     db.add(
         DeliveryLog(
@@ -93,25 +104,27 @@ def _attempt(
             channel_type=channel.type,
             role=role,
             original_channel_id=original_channel_id,
-            success=success,
-            target=target,
+            success=result.success,
+            target=channel.default_target,
             title=payload.title,
-            detail=detail,
+            detail=result.detail,
+            error_kind=result.error_kind if not result.success else "none",
         )
     )
 
-    result = NotifyChannelResult(
+    out = NotifyChannelResult(
         channel_id=channel.id,
         channel_name=channel.name,
         channel_type=channel.type,
-        success=success,
-        target=target,
-        detail=detail,
+        success=result.success,
+        target=channel.default_target,
+        detail=result.detail,
         role=role,
         original_channel_id=original_channel_id,
+        error_kind=result.error_kind if not result.success else "none",
     )
-    tried[channel.id] = result
-    return result
+    tried[channel.id] = out
+    return out
 
 
 def _resolve_backup(channel: Channel, backup_id: int, db: Session) -> Channel | None:
@@ -131,6 +144,11 @@ def dispatch(
 
     外部调用方（NotifyRequest）和 WebUI 测试发送（AdminNotifyRequest）共用此函数。
     AdminNotifyRequest 可选传 channel_ids 限定测试范围，不传则对所有启用通道走完整调度。
+
+    切换决策（基于 error_kind）：
+    - 任何失败（rate_limit/auth/config/network/channel_error）都触发切换到备用通道
+    - 限流(rate_limit) 是最典型的切换场景：当前通道被限流，立即切到备用
+    - 所有主链全部失败时，升级到紧急通道
     """
     request_id = str(uuid.uuid4())
 
@@ -169,6 +187,7 @@ def dispatch(
 
         backups: list[NotifyChannelResult] = []
         if not primary_result.success:
+            # 主通道失败（含限流），按备用组顺序逐个尝试
             for backup_id in primary.backup_channel_ids or []:
                 backup = _resolve_backup(primary, backup_id, db)
                 if not backup:
@@ -202,6 +221,7 @@ def dispatch(
     emergency_attempts: list[NotifyChannelResult] = []
 
     # 自动升级：主链全部失败 且 存在紧急通道 → 逐个尝试紧急通道
+    # 典型场景：主通道和备用通道都被限流/认证失败/网络异常 → 升级到紧急通道兜底
     if not primary_chain_success and emergency_channels:
         escalated = True
         for em_ch in emergency_channels:
@@ -235,14 +255,16 @@ def dispatch_single(channel: Channel, db: Session) -> NotifyChannelResult:
     try:
         config = registry.validate(channel.type, dict(channel.config))
         sender = registry.get(channel.type)
-        success, detail = sender.send(
+        result = sender.send(
             title="push-aio 测试通知",
             content="这是一条测试消息，用于确认渠道配置可用。",
             config=config,
             target=channel.default_target,
         )
+    except ValueError as exc:
+        result = SendResult.fail(f"配置错误: {exc}", "config")
     except Exception as exc:
-        success, detail = False, str(exc)
+        result = SendResult.fail(str(exc), "channel_error")
 
     db.add(
         DeliveryLog(
@@ -252,10 +274,11 @@ def dispatch_single(channel: Channel, db: Session) -> NotifyChannelResult:
             channel_type=channel.type,
             role="primary",
             original_channel_id=None,
-            success=success,
+            success=result.success,
             target=channel.default_target,
             title="push-aio 测试通知",
-            detail=detail,
+            detail=result.detail,
+            error_kind=result.error_kind if not result.success else "none",
         )
     )
     db.commit()
@@ -263,9 +286,10 @@ def dispatch_single(channel: Channel, db: Session) -> NotifyChannelResult:
         channel_id=channel.id,
         channel_name=channel.name,
         channel_type=channel.type,
-        success=success,
+        success=result.success,
         target=channel.default_target,
-        detail=detail,
+        detail=result.detail,
         role="primary",
         original_channel_id=None,
+        error_kind=result.error_kind if not result.success else "none",
     )

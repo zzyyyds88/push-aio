@@ -132,6 +132,30 @@ function roleLabel(role) {
   return "主";
 }
 
+/* ============ 错误分类标签 ============ */
+// 后端 error_kind → 中文标签 + 颜色，用于日志/测试结果展示
+function errorKindLabel(kind) {
+  switch (kind) {
+    case "rate_limit": return "限流";
+    case "auth": return "认证失败";
+    case "config": return "配置错误";
+    case "network": return "网络异常";
+    case "channel_error": return "渠道错误";
+    case "none": return "";
+    default: return "";
+  }
+}
+
+function errorKindTag(kind) {
+  const label = errorKindLabel(kind);
+  if (!label) return "";
+  // 限流=橙(backup色) / 认证=红(bad色) / 配置=红 / 网络=橙 / 渠道错误=红
+  const cls = kind === "rate_limit" || kind === "network"
+    ? "tag backup"
+    : "tag bad";
+  return `<span class="${cls}">${escapeHtml(label)}</span>`;
+}
+
 function parseChannelIds(value) {
   if (!value) return null;
   const ids = [];
@@ -190,15 +214,18 @@ function renderDashboard() {
         const successTag = item.success
           ? `<span class="tag ok">成功</span>`
           : `<span class="tag bad">失败</span>`;
+        const errTag = item.success ? "" : errorKindTag(item.error_kind);
         return `
           <article class="card">
             <div class="row">
               <strong>${escapeHtml(item.channel_name)}</strong>
               ${roleTag}
               ${successTag}
+              ${errTag}
               <span class="meta">${new Date(item.created_at).toLocaleString()}</span>
             </div>
             <p class="meta">${escapeHtml(item.title)}</p>
+            ${item.success ? "" : `<p class="meta">详情：${escapeHtml(item.detail)}</p>`}
           </article>
         `;
       })
@@ -412,7 +439,8 @@ async function handleChannelAction(event) {
 
     if (action === "test") {
       const result = await api(`/admin/api/channels/${id}/test`, { method: "POST" });
-      alert(`${result.channel_name}：${result.success ? "成功" : "失败"}\n${result.detail}`);
+      const errLabel = result.success ? "" : `（${errorKindLabel(result.error_kind)}）`;
+      alert(`${result.channel_name}：${result.success ? "成功" : "失败"}${errLabel}\n${result.detail}`);
       await loadLogs();
       return;
     }
@@ -551,13 +579,17 @@ function renderNotifyResult(result) {
         const cls = step.success ? "ok" : "bad";
         const arrow = idx > 0 ? `<span class="chain-arrow">→</span>` : "";
         const role = step.role;
-        return `${arrow}<span class="chain-step ${cls}"><span class="${tagClassForRole(role)}">${roleLabel(role)}</span>${escapeHtml(step.channel_name)} ${step.success ? "✓" : "✗"}</span>`;
+        const errTag = step.success ? "" : errorKindTag(step.error_kind);
+        return `${arrow}<span class="chain-step ${cls}"><span class="${tagClassForRole(role)}">${roleLabel(role)}</span>${escapeHtml(step.channel_name)} ${step.success ? "✓" : "✗"}${errTag}</span>`;
       })
       .join("");
     const headTag = chain.success
       ? `<span class="tag ok">链路成功</span>`
       : `<span class="tag bad">链路失败</span>`;
-    const lastDetail = steps[steps.length - 1].detail;
+    const lastStep = steps[steps.length - 1];
+    const lastDetail = lastStep.detail;
+    const lastErrLabel = lastStep.success ? "" : errorKindLabel(lastStep.error_kind);
+    const detailPrefix = lastErrLabel ? `最后详情（${lastErrLabel}）` : "最后详情";
     return `
       <div class="chain">
         <div class="chain-head">
@@ -565,7 +597,7 @@ function renderNotifyResult(result) {
           ${headTag}
         </div>
         <div class="chain-steps">${stepsHtml}</div>
-        <div class="chain-detail">最后详情：${escapeHtml(lastDetail)}</div>
+        <div class="chain-detail">${detailPrefix}：${escapeHtml(lastDetail)}</div>
       </div>
     `;
   }).join("");
@@ -574,7 +606,8 @@ function renderNotifyResult(result) {
     ? result.emergency_attempts
         .map((e) => {
           const cls = e.success ? "ok" : "bad";
-          return `<div class="chain-step ${cls}"><span class="tag emergency">紧急</span>${escapeHtml(e.channel_name)} ${e.success ? "✓" : "✗"}</div>`;
+          const errTag = e.success ? "" : errorKindTag(e.error_kind);
+          return `<div class="chain-step ${cls}"><span class="tag emergency">紧急</span>${escapeHtml(e.channel_name)} ${e.success ? "✓" : "✗"}${errTag}</div>`;
         })
         .join("")
     : "";

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .api.routes import admin_router, notify_router, public_router
 from .core.bootstrap import bootstrap_channels_if_needed
-from .core.db import Base, engine
+from .core.db import Base, engine, ensure_schema
 from .core.security import ensure_api_key_configured
 
 
@@ -32,6 +32,8 @@ app.add_middleware(
 
 # 自动建表（仅 create_all，不做迁移；表结构变更需手动删 data/push_aio.db 重建）
 Base.metadata.create_all(bind=engine)
+# 兼容旧库：对已存在的表补缺失列，避免删库丢日志
+ensure_schema()
 bootstrap_channels_if_needed()
 app.include_router(public_router)  # /api/health（无需鉴权）
 app.include_router(notify_router)  # /api/notify（外部调用，需 X-API-Key）
