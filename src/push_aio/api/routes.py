@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..core.db import get_db
@@ -156,6 +156,19 @@ def list_channels(db: Session = Depends(get_db)):
 @admin_router.post("/channels", response_model=ChannelOut)
 def create_channel(payload: ChannelCreate, db: Session = Depends(get_db)):
     validated_config = registry.validate(payload.type, payload.config)
+    # 自动追加到所在组（主通道组/紧急通道组）末尾：
+    # 取同组启用渠道的最大 priority + 10，保证新建渠道排在最后。
+    # 顺序调整完全由上移/下移按钮负责，用户无需手填 priority。
+    if payload.priority is None:
+        max_priority = db.scalar(
+            select(func.max(Channel.priority)).where(
+                Channel.is_emergency.is_(payload.is_emergency),
+                Channel.enabled.is_(True),
+            )
+        )
+        auto_priority = (max_priority or 0) + 10
+    else:
+        auto_priority = payload.priority
     channel = Channel(
         name=payload.name,
         type=payload.type,
@@ -163,7 +176,7 @@ def create_channel(payload: ChannelCreate, db: Session = Depends(get_db)):
         default_target=payload.default_target,
         config=validated_config,
         is_emergency=payload.is_emergency,
-        priority=payload.priority,
+        priority=auto_priority,
     )
     db.add(channel)
     db.commit()

@@ -41,7 +41,8 @@ class ChannelBase(BaseModel):
     is_emergency: bool = False
     # 发送顺序：数字越小越先尝试。主通道组（is_emergency=False）和紧急通道组（is_emergency=True）
     # 各自独立按 priority 升序排列。前端通过上移/下移按钮调整，无需手填。
-    priority: int = Field(default=100, ge=0, le=1000)
+    # 新建渠道时由后端自动追加到所在组末尾，前端创建表单不展示此字段。
+    priority: int | None = Field(default=None, ge=0, le=1000)
 
 
 class ChannelCreate(ChannelBase):

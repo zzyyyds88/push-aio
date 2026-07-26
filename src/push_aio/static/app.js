@@ -348,10 +348,6 @@ function renderChannelForm() {
       <input type="checkbox" name="is_emergency" />
       <span>标记为紧急通道（用于全失败升级）</span>
     </label>
-    <label>
-      <span>优先级（数字越小越先尝试，默认 100）</span>
-      <input name="priority" type="number" value="100" min="0" max="1000" />
-    </label>
     <button type="submit">保存渠道</button>
   `;
 
@@ -437,7 +433,6 @@ async function submitChannelForm(event) {
     }
   }
 
-  const priority = Number(formData.get("priority")) || 100;
   try {
     await api("/admin/api/channels", {
       method: "POST",
@@ -448,7 +443,6 @@ async function submitChannelForm(event) {
         default_target: formData.get("default_target") || null,
         config,
         is_emergency: formData.get("is_emergency") === "on",
-        priority,
       }),
     });
     toast("渠道已保存");
