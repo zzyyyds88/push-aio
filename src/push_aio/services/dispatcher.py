@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Channel, DeliveryLog
 from ..schemas import (
+    AdminNotifyRequest,
     NotifyChannelResult,
     NotifyChainGroup,
     NotifyRequest,
@@ -27,16 +28,12 @@ _TRANSIENT_EXCEPTIONS = (
 
 def _send_one(
     channel: Channel,
-    payload: NotifyRequest,
-    target_override: str | None,
-    config_override: dict[str, Any] | None,
+    payload: NotifyRequest | AdminNotifyRequest,
 ) -> tuple[bool, str, str | None]:
     """对单通道执行 1+1 重试发送，返回 (success, detail, target)。"""
     sender = registry.get(channel.type)
-    target = target_override or channel.default_target
+    target = channel.default_target
     config = dict(channel.config)
-    if config_override:
-        config.update(config_override)
     config["_notify_content_type"] = payload.content_type
     if channel.type == "email":
         config["_content_type"] = payload.content_type
@@ -65,7 +62,7 @@ def _send_one(
 
 def _attempt(
     channel: Channel,
-    payload: NotifyRequest,
+    payload: NotifyRequest | AdminNotifyRequest,
     role: str,
     original_channel_id: int | None,
     db: Session,
@@ -75,7 +72,6 @@ def _attempt(
     """对一个通道做一次完整尝试；同请求内已尝试的通道直接复用结果不重发。"""
     if channel.id in tried:
         cached = tried[channel.id]
-        # 复用已有结果，但替换角色与原始主通道，便于链路展示
         return NotifyChannelResult(
             channel_id=cached.channel_id,
             channel_name=cached.channel_name,
@@ -87,9 +83,7 @@ def _attempt(
             original_channel_id=original_channel_id,
         )
 
-    target_override = (payload.target_overrides or {}).get(channel.id)
-    config_override = (payload.config_overrides or {}).get(channel.id)
-    success, detail, target = _send_one(channel, payload, target_override, config_override)
+    success, detail, target = _send_one(channel, payload)
 
     db.add(
         DeliveryLog(
@@ -129,21 +123,31 @@ def _resolve_backup(channel: Channel, backup_id: int, db: Session) -> Channel | 
     return backup
 
 
-def dispatch(payload: NotifyRequest, db: Session) -> NotifyResponse:
-    """主→备→紧急 调度。"""
+def dispatch(
+    payload: NotifyRequest | AdminNotifyRequest,
+    db: Session,
+) -> NotifyResponse:
+    """固定调度策略：主通道 → 备用通道 → 全失败升级紧急通道。
+
+    外部调用方（NotifyRequest）和 WebUI 测试发送（AdminNotifyRequest）共用此函数。
+    AdminNotifyRequest 可选传 channel_ids 限定测试范围，不传则对所有启用通道走完整调度。
+    """
     request_id = str(uuid.uuid4())
 
-    query = select(Channel).where(Channel.enabled.is_(True))
-    if payload.channel_ids:
-        query = query.where(Channel.id.in_(payload.channel_ids))
-    if payload.channel_types:
-        query = query.where(Channel.type.in_(payload.channel_types))
-    if payload.channel_names:
-        query = query.where(Channel.name.in_(payload.channel_names))
+    # 主通道：所有启用的非紧急通道（按 priority 升序）
+    primary_query = select(Channel).where(
+        Channel.enabled.is_(True),
+        Channel.is_emergency.is_(False),
+    )
+    # AdminNotifyRequest 可限定测试渠道
+    channel_ids = getattr(payload, "channel_ids", None)
+    if channel_ids:
+        primary_query = primary_query.where(Channel.id.in_(channel_ids))
     primary_channels = list(
-        db.scalars(query.order_by(Channel.priority.asc(), Channel.id.asc())).all()
+        db.scalars(primary_query.order_by(Channel.priority.asc(), Channel.id.asc())).all()
     )
 
+    # 紧急通道：仅在主链全失败时自动升级
     emergency_channels = list(
         db.scalars(
             select(Channel)
@@ -155,7 +159,6 @@ def dispatch(payload: NotifyRequest, db: Session) -> NotifyResponse:
     tried: dict[int, NotifyChannelResult] = {}
     chains: list[NotifyChainGroup] = []
     flat_results: list[NotifyChannelResult] = []
-    emergency_attempts: list[NotifyChannelResult] = []
 
     # 主链路：每个主通道尝试 → 失败则按备用组顺序兜底
     for primary in primary_channels:
@@ -196,32 +199,10 @@ def dispatch(payload: NotifyRequest, db: Session) -> NotifyResponse:
 
     primary_chain_success = any(c.success for c in chains)
     escalated = False
+    emergency_attempts: list[NotifyChannelResult] = []
 
-    # 紧急触发：显式标记 与 主链全失败升级
-    if payload.priority == "emergency" or payload.force_emergency:
-        for em_ch in emergency_channels:
-            if em_ch.id in tried:
-                # 紧急通道复用主链结果时，也作为 emergency 角色记一条
-                cached = tried[em_ch.id]
-                emergency_attempts.append(
-                    NotifyChannelResult(
-                        channel_id=cached.channel_id,
-                        channel_name=cached.channel_name,
-                        channel_type=cached.channel_type,
-                        success=cached.success,
-                        target=cached.target,
-                        detail=f"复用本次请求已尝试结果：{cached.detail}",
-                        role="emergency",
-                        original_channel_id=None,
-                    )
-                )
-                continue
-            em_result = _attempt(
-                em_ch, payload, "emergency", None, db, request_id, tried
-            )
-            emergency_attempts.append(em_result)
-            flat_results.append(em_result)
-    elif not primary_chain_success and emergency_channels:
+    # 自动升级：主链全部失败 且 存在紧急通道 → 逐个尝试紧急通道
+    if not primary_chain_success and emergency_channels:
         escalated = True
         for em_ch in emergency_channels:
             if em_ch.id in tried:
@@ -241,7 +222,6 @@ def dispatch(payload: NotifyRequest, db: Session) -> NotifyResponse:
     return NotifyResponse(
         success=overall_success,
         request_id=request_id,
-        priority=payload.priority,
         chains=chains,
         emergency_attempts=emergency_attempts,
         escalated=escalated,
@@ -250,17 +230,16 @@ def dispatch(payload: NotifyRequest, db: Session) -> NotifyResponse:
 
 
 def dispatch_single(channel: Channel, db: Session) -> NotifyChannelResult:
-    """单通道测试发送，不走备用/紧急链路；用于 /api/channels/{id}/test。"""
-    sender = registry.get(channel.type)
-    target = channel.default_target
+    """单通道测试发送，不走备用/紧急链路；用于 /admin/api/channels/{id}/test。"""
     request_id = str(uuid.uuid4())
     try:
         config = registry.validate(channel.type, dict(channel.config))
+        sender = registry.get(channel.type)
         success, detail = sender.send(
             title="push-aio 测试通知",
             content="这是一条测试消息，用于确认渠道配置可用。",
             config=config,
-            target=target,
+            target=channel.default_target,
         )
     except Exception as exc:
         success, detail = False, str(exc)
@@ -274,7 +253,7 @@ def dispatch_single(channel: Channel, db: Session) -> NotifyChannelResult:
             role="primary",
             original_channel_id=None,
             success=success,
-            target=target,
+            target=channel.default_target,
             title="push-aio 测试通知",
             detail=detail,
         )
@@ -285,7 +264,7 @@ def dispatch_single(channel: Channel, db: Session) -> NotifyChannelResult:
         channel_name=channel.name,
         channel_type=channel.type,
         success=success,
-        target=target,
+        target=channel.default_target,
         detail=detail,
         role="primary",
         original_channel_id=None,

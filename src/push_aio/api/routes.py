@@ -8,6 +8,7 @@ from ..core.db import get_db
 from ..core.security import RequireApiKey
 from ..models import Channel, DeliveryLog
 from ..schemas import (
+    AdminNotifyRequest,
     BackupGroupUpdate,
     ChannelCreate,
     ChannelMeta,
@@ -23,10 +24,15 @@ from ..schemas import (
 from ..services.channels import registry
 from ..services.dispatcher import dispatch, dispatch_single
 
-# 健康检查接口：不需要鉴权（让外部监控能直接探活）
+# 公开接口：健康检查（无需鉴权，供监控探活）
 public_router = APIRouter(prefix="/api")
-# 业务接口：全部需要 X-API-Key 鉴权
-router = APIRouter(prefix="/api", dependencies=[RequireApiKey])
+
+# 外部调用接口：推送通知（需 X-API-Key）
+# 外部调用方只能传 title/content，不能选择渠道、不能指定优先级
+notify_router = APIRouter(prefix="/api", dependencies=[RequireApiKey])
+
+# 管理接口：WebUI 专用（需 X-API-Key），包含渠道 CRUD、日志、状态、测试发送
+admin_router = APIRouter(prefix="/admin/api", dependencies=[RequireApiKey])
 
 
 def _serialize_channel(channel: Channel) -> ChannelOut:
@@ -66,23 +72,39 @@ def _channel_status(channel: Channel) -> ChannelStatusOut:
     )
 
 
+# ==================== 公开接口 ====================
+
 @public_router.get("/health")
 def health():
     return {"ok": True}
 
 
-@router.get("/channel-types", response_model=list[ChannelMeta])
+# ==================== 外部调用接口 ====================
+
+@notify_router.post("/notify", response_model=NotifyResponse)
+def notify(payload: NotifyRequest, db: Session = Depends(get_db)):
+    """外部程序调用入口。
+
+    只接受 title/content/content_type，调度策略由系统固定为：
+    主通道 → 备用通道 → 全失败升级紧急通道。
+    """
+    return dispatch(payload, db)
+
+
+# ==================== 管理接口（WebUI 专用） ====================
+
+@admin_router.get("/channel-types", response_model=list[ChannelMeta])
 def channel_types():
     return registry.meta()
 
 
-@router.get("/channels/status", response_model=list[ChannelStatusOut])
+@admin_router.get("/channels/status", response_model=list[ChannelStatusOut])
 def channel_statuses(db: Session = Depends(get_db)):
     channels = db.scalars(select(Channel).order_by(Channel.id.asc())).all()
     return [_channel_status(channel) for channel in channels]
 
 
-@router.get("/status", response_model=PlatformStatusOut)
+@admin_router.get("/status", response_model=PlatformStatusOut)
 def platform_status(db: Session = Depends(get_db)):
     channels = db.scalars(select(Channel).order_by(Channel.id.asc())).all()
     statuses = [_channel_status(channel) for channel in channels]
@@ -98,13 +120,13 @@ def platform_status(db: Session = Depends(get_db)):
     )
 
 
-@router.get("/channels", response_model=list[ChannelOut])
+@admin_router.get("/channels", response_model=list[ChannelOut])
 def list_channels(db: Session = Depends(get_db)):
     channels = db.scalars(select(Channel).order_by(Channel.id.desc())).all()
     return [_serialize_channel(item) for item in channels]
 
 
-@router.post("/channels", response_model=ChannelOut)
+@admin_router.post("/channels", response_model=ChannelOut)
 def create_channel(payload: ChannelCreate, db: Session = Depends(get_db)):
     validated_config = registry.validate(payload.type, payload.config)
     channel = Channel(
@@ -123,7 +145,7 @@ def create_channel(payload: ChannelCreate, db: Session = Depends(get_db)):
     return _serialize_channel(channel)
 
 
-@router.put("/channels/{channel_id}", response_model=ChannelOut)
+@admin_router.put("/channels/{channel_id}", response_model=ChannelOut)
 def update_channel(channel_id: int, payload: ChannelUpdate, db: Session = Depends(get_db)):
     channel = db.get(Channel, channel_id)
     if not channel:
@@ -153,7 +175,7 @@ def update_channel(channel_id: int, payload: ChannelUpdate, db: Session = Depend
     return _serialize_channel(channel)
 
 
-@router.put("/channels/{channel_id}/backups", response_model=ChannelOut)
+@admin_router.put("/channels/{channel_id}/backups", response_model=ChannelOut)
 def update_backup_group(
     channel_id: int, payload: BackupGroupUpdate, db: Session = Depends(get_db)
 ):
@@ -168,7 +190,7 @@ def update_backup_group(
     return _serialize_channel(channel)
 
 
-@router.delete("/channels/{channel_id}")
+@admin_router.delete("/channels/{channel_id}")
 def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     channel = db.get(Channel, channel_id)
     if not channel:
@@ -178,15 +200,16 @@ def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 
-@router.post("/channels/{channel_id}/test", response_model=NotifyChannelResult)
+@admin_router.post("/channels/{channel_id}/test", response_model=NotifyChannelResult)
 def test_channel(channel_id: int, db: Session = Depends(get_db)):
+    """单通道测试发送，不走备用/紧急链路。"""
     channel = db.get(Channel, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="渠道不存在")
     return dispatch_single(channel, db)
 
 
-@router.get("/channels/emergency", response_model=list[ChannelOut])
+@admin_router.get("/channels/emergency", response_model=list[ChannelOut])
 def list_emergency_channels(db: Session = Depends(get_db)):
     """查询所有紧急通道，便于前端独立展示。"""
     channels = db.scalars(
@@ -197,35 +220,23 @@ def list_emergency_channels(db: Session = Depends(get_db)):
     return [_serialize_channel(item) for item in channels]
 
 
-@router.post("/notify", response_model=NotifyResponse)
-def notify(payload: NotifyRequest, db: Session = Depends(get_db)):
-    # 主通道筛选：若指定了 ids/types/names 但完全没匹配到，且无紧急通道兜底，则 404
-    if payload.channel_ids or payload.channel_types or payload.channel_names:
-        query = select(Channel.id).where(Channel.enabled.is_(True))
-        if payload.channel_ids:
-            query = query.where(Channel.id.in_(payload.channel_ids))
-        if payload.channel_types:
-            query = query.where(Channel.type.in_(payload.channel_types))
-        if payload.channel_names:
-            query = query.where(Channel.name.in_(payload.channel_names))
-        has_primary = db.scalar(query.limit(1)) is not None
-        has_emergency = db.scalar(
-            select(Channel.id)
-            .where(Channel.enabled.is_(True), Channel.is_emergency.is_(True))
-            .limit(1)
-        ) is not None
-        if not has_primary and not has_emergency:
-            raise HTTPException(status_code=404, detail="未找到可用渠道，且无紧急通道兜底")
+@admin_router.post("/notify", response_model=NotifyResponse)
+def admin_notify(payload: AdminNotifyRequest, db: Session = Depends(get_db)):
+    """WebUI 测试发送入口。
+
+    管理员可选传 channel_ids 限定测试范围，不传则对所有启用通道走完整调度。
+    用于在 WebUI 上验证推送链路是否正常。
+    """
     return dispatch(payload, db)
 
 
-@router.get("/logs", response_model=list[DeliveryLogOut])
+@admin_router.get("/logs", response_model=list[DeliveryLogOut])
 def list_logs(db: Session = Depends(get_db)):
     logs = db.scalars(select(DeliveryLog).order_by(DeliveryLog.id.desc()).limit(50)).all()
     return [DeliveryLogOut.model_validate(item) for item in logs]
 
 
-@router.get("/logs/{request_id}", response_model=list[DeliveryLogOut])
+@admin_router.get("/logs/{request_id}", response_model=list[DeliveryLogOut])
 def list_logs_by_request(request_id: str, db: Session = Depends(get_db)):
     """按一次 notify 调用聚合所有尝试日志，便于复盘链路。"""
     logs = db.scalars(

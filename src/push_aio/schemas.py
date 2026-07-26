@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 ChannelType = str
-Priority = Literal["normal", "emergency"]
 DeliveryRole = Literal["primary", "backup", "emergency"]
 
 
@@ -111,20 +110,34 @@ class NotifyAttachment(BaseModel):
 
 
 class NotifyRequest(BaseModel):
+    """外部调用接口的请求体。
+
+    外部调用方只能传消息内容，不能选择渠道、不能指定优先级——
+    调度策略由系统固定为：主通道 → 备用通道 → 全失败升级紧急通道。
+    严格模式：传任何额外字段都会被拒绝（422）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(..., min_length=1, max_length=255)
     content: str = Field(..., min_length=1)
     content_type: Literal["plain", "html", "markdown"] = "plain"
-    # normal：常规发送，主链全失败后自动升级到紧急通道
-    # emergency：紧急发送，主链与紧急通道并发触发
-    priority: Priority = "normal"
     attachments: list[NotifyAttachment] | None = None
+
+
+class AdminNotifyRequest(BaseModel):
+    """WebUI 测试发送的请求体。
+
+    管理员可在 WebUI 上选择特定渠道进行测试，方便排查单个渠道问题。
+    不选渠道时与外部 NotifyRequest 行为一致（走全自动调度）。
+    """
+
+    title: str = Field(..., min_length=1, max_length=255)
+    content: str = Field(..., min_length=1)
+    content_type: Literal["plain", "html", "markdown"] = "plain"
+    attachments: list[NotifyAttachment] | None = None
+    # 可选：只测试指定渠道（空则走全自动调度）
     channel_ids: list[int] | None = None
-    channel_types: list[ChannelType] | None = None
-    channel_names: list[str] | None = None
-    target_overrides: dict[int, str] | None = None
-    config_overrides: dict[int, dict[str, Any]] | None = None
-    # True 时即便匹配到主通道也强制并发触发紧急通道
-    force_emergency: bool = False
 
 
 class NotifyChannelResult(BaseModel):
@@ -150,11 +163,10 @@ class NotifyChainGroup(BaseModel):
 class NotifyResponse(BaseModel):
     success: bool
     request_id: str
-    priority: Priority
     chains: list[NotifyChainGroup]
     emergency_attempts: list[NotifyChannelResult] = Field(default_factory=list)
     escalated: bool = False
-    results: list[NotifyChannelResult]  # 扁平结果，向后兼容
+    results: list[NotifyChannelResult]  # 扁平结果
 
 
 class DeliveryLogOut(BaseModel):

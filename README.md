@@ -1,27 +1,43 @@
 # push-aio
 
-从 `example/qinglong-develop` 提取通知能力后，重写成的 Python 聚合通知平台。
-**v0.2** 加入主→备→紧急三层故障切换调度引擎，并重构为液态玻璃 UI。
+个人统一推送平台：把一批通知渠道（Bark / 邮箱 / Telegram / 钉钉 / 飞书 / ...）聚合起来对外暴露**一个**鉴权入口，自动做主→备→紧急三层故障切换。
 
-当前已按 `example/qinglong-develop/sample/notify.py` 提取这些渠道：
+定位：**个人自用**，不负责向第三方分发。所有渠道配置的都是你自己的设备。
 
-`bark`、`console`、`dingtalk_bot`、`feishu_bot`、`go_cqhttp`、`gotify`、`igot`、`server_chan`、`pushdeer`、`synology_chat`、`pushplus`、`weplus_bot`、`qmsg`、`wecom_app`、`wecom_bot`、`telegram_bot`、`aibotk`、`email`、`pushme`、`chronocat`、`webhook`、`ntfy`、`wxpusher`。
+## 设计要点
 
-能力审计见 `docs/CHANNEL_CAPABILITY_AUDIT.md`。
+- **接口分离**：外部调用入口与 WebUI 管理入口物理拆开，管理接口不对外。
+  - `/api/health`：公开，仅探活。
+  - `/api/notify`：外部程序调用，需 API Key，**只接受消息内容**，不能选渠道、不能指定优先级。
+  - `/admin/api/*`：WebUI 专用，需 API Key，含渠道 CRUD、日志、测试发送。前端访问，不对外公开。
+- **固定调度策略**：外部调用方没有"normal/emergency"可选，系统统一按 `主通道 → 备用通道 → 全失败升级紧急通道` 执行。
+- **严格模式**：`/api/notify` 启用 `extra="forbid"`，多传一个字段直接 422，防止外部调用方绕过调度策略。
+- **强制鉴权**：未配置 API Key 拒绝启动；除 `/api/health` 外所有接口需 `X-API-Key` 请求头。
+- **固定端口 8080**：不接受 CLI/环境变量覆盖。
 
-## 目录
+## 目录结构
 
-- `src/push_aio`：FastAPI 后端、调度引擎、渠道注册表、SQLite 持久化（src layout）。
-- `src/push_aio/services/dispatcher.py`：主→备→紧急三层调度核心。
-- `src/push_aio/static`：液态玻璃质感单页前端，由后端直接托管。
-- `data/push_aio.db`：运行后自动生成的 SQLite 数据库（已 .gitignore，不上传）。
-- `data/bootstrap_channels.json`：可选初始化种子文件，仅在数据库为空时导入（已 .gitignore，私有配置不上传）。
-- `data/bootstrap_channels.example.json`：脱敏示例，可参考。
-- `example/`：上游参考源码副本（青龙），已 .gitignore，不开源上传；上游链接：https://github.com/whyour/qinglong
+```
+push-aio/
+├── src/push_aio/                # FastAPI 后端（src layout）
+│   ├── api/routes.py            # 三层路由：public / notify / admin
+│   ├── services/dispatcher.py   # 主→备→紧急调度核心
+│   ├── services/channels/       # 渠道注册表 + 各渠道 sender
+│   ├── core/security.py         # API Key 鉴权
+│   ├── core/db.py               # SQLite + create_all 建表
+│   ├── static/                  # 液态玻璃质感单页前端
+│   └── main.py                  # 入口（端口固定 8080）
+├── data/                        # 运行时数据（已 .gitignore）
+│   ├── push_aio.db              # SQLite 数据库
+│   └── bootstrap_channels.json  # 可选初始化种子
+├── .env                         # API Key 配置（已 .gitignore）
+├── .env.example                 # 配置示例
+└── pyproject.toml
+```
 
 ## 安装
 
-需要本地有 Python 3.11+。
+需要 Python 3.11+。
 
 ```powershell
 py -3.11 -m venv .venv
@@ -29,11 +45,9 @@ py -3.11 -m venv .venv
 pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
-`pip install -e .` 会按 `pyproject.toml` 安装依赖并以可编辑模式注册 `push_aio` 包。
-
 ## 配置 API Key（必填）
 
-本服务设计为公网部署，所有 `/api/*` 接口（`/api/health` 除外）都需要 API Key 鉴权，未配置则拒绝启动。
+服务设计为公网部署，未配置 API Key 会拒绝启动。
 
 1. 复制示例配置：
 
@@ -56,21 +70,15 @@ PUSH_AIO_API_KEY=<你刚生成的随机串>
 
 `.env` 已在 `.gitignore` 中，不会上传到 git。
 
-## 启动（固定端口 8080）
+## 启动
 
 ```powershell
 python -m push_aio.main
 ```
 
-或：
-
-```powershell
-uvicorn push_aio.main:app --host 0.0.0.0 --port 8080 --reload
-```
-
 启动后访问：
 
-- 前端：`http://127.0.0.1:8080/`
+- 前端 WebUI：`http://127.0.0.1:8080/`（首次访问弹窗输入 API Key）
 - API 文档：`http://127.0.0.1:8080/docs`
 
 ## 推送调度机制
@@ -78,26 +86,36 @@ uvicorn push_aio.main:app --host 0.0.0.0 --port 8080 --reload
 每个渠道可单独配置：
 
 - `backup_channel_ids`：备用组（id 列表）。主通道失败时按顺序逐个尝试。
-- `is_emergency`：紧急通道标记。`normal` 请求主链全部失败后自动升级到这些通道；`emergency` 请求会与主链**并发**触发这些通道。
-- `priority`：优先级（数字越小越先尝试）。
+- `is_emergency`：是否标记为紧急通道。仅当所有主链全部失败时才会自动升级到这些通道。
+- `priority`：同层通道内的尝试顺序（数字越小越先尝试，默认 100）。
 
-### 调度流程
+### 固定调度流程
 
 ```
-正常请求 (priority=normal)
-  ├─ 1. 按筛选条件找出主通道
+任何 /api/notify 调用（外部程序）或 /admin/api/notify（WebUI 测试）
+  ├─ 1. 找出所有启用的非紧急通道（按 priority 升序）作为主通道
   ├─ 2. 对每个主通道 c：
   │     ├─ 尝试 c 本身
   │     └─ 失败 → 按 c.backup_channel_ids 顺序尝试备用
   │           └─ 任一备用成功即停止该链
-  └─ 3. 所有主链全失败 且 存在紧急通道 → 自动升级，逐个尝试紧急通道
-
-紧急请求 (priority=emergency 或 force_emergency=true)
-  ├─ 1. 同上跑主链
-  └─ 2. 同时并发触发所有紧急通道（不等主链失败）
+  └─ 3. 所有主链全失败 且 存在启用的紧急通道
+        └─ 自动升级，逐个尝试紧急通道
 ```
 
-每个通道单次请求内**最多尝试一次**（去重），瞬时网络异常会重试 1 次。所有尝试写入 `delivery_logs`，同一次调用共享 `request_id`，并标记 `role`（primary/backup/emergency）和 `original_channel_id`。
+- 同一次请求内**每个通道最多尝试一次**（去重），避免环路。
+- 瞬时网络异常（Timeout / ConnectionError）会重试 1 次。
+- 所有尝试写入 `delivery_logs`，共享同一个 `request_id`，并标记 `role`（primary / backup / emergency）和 `original_channel_id`。
+
+## 渠道配置
+
+渠道的增删改**只能在 WebUI 进行**，没有对外管理 API。
+
+每个渠道有两种目标模式：
+
+- `embedded`：设备码 / token / chat_id 已嵌入到 `config` 里，不需要 `default_target`（Bark、Telegram、钉钉、飞书等都属于这种）。
+- `external`：目标收件人独立于配置，需要填 `default_target`（目前只有 email）。
+
+支持渠道：`bark`、`email`、`telegram_bot`、`dingtalk_bot`、`feishu_bot`、`pushplus`、`server_chan`、`pushdeer`、`gotify`、`ntfy`、`wxpusher`、`wecom_bot`、`wecom_app`、`qmsg`、`weplus_bot`、`aibotk`、`pushme`、`chronocat`、`synology_chat`、`go_cqhttp`、`igot`、`webhook`、`console`。
 
 ## 批量初始化渠道
 
@@ -105,101 +123,52 @@ uvicorn push_aio.main:app --host 0.0.0.0 --port 8080 --reload
 
 ## API 速查
 
-> 所有 `/api/*` 接口（`/api/health` 除外）都需要在请求头携带 `X-API-Key: <你的 key>`。前端首次访问会弹窗输入并存到 localStorage，外部程序调用时手动加这个 header。
+### 公开接口
 
-### 新增渠道
+| 方法 | 路径 | 鉴权 | 用途 |
+|---|---|---|---|
+| GET | `/api/health` | 否 | 健康检查 / 监控探活 |
 
-```http
-POST /api/channels
-```
+### 外部调用接口（程序用）
 
-```json
-{
-  "name": "我的 Bark",
-  "type": "bark",
-  "enabled": true,
-  "default_target": null,
-  "config": { "bark_base_url": "https://api.day.app/你的设备码" },
-  "backup_channel_ids": [2, 3],
-  "is_emergency": false,
-  "priority": 100
-}
-```
+| 方法 | 路径 | 鉴权 | 用途 |
+|---|---|---|---|
+| POST | `/api/notify` | 是 | 外部程序投递通知 |
 
-### 更新备用组（单独接口）
-
-```http
-PUT /api/channels/{channel_id}/backups
-```
-
-```json
-{ "backup_channel_ids": [2, 3] }
-```
-
-### 远程触发通知
-
-```http
-POST /api/notify
-X-API-Key: <你的 key>
-Content-Type: application/json
-```
-
-最简形式（发给所有启用的主通道）：
-
-```json
-{ "title": "任务完成", "content": "已执行完毕" }
-```
-
-紧急发送（主链 + 紧急通道并发）：
+`/api/notify` 请求体（严格模式，多传字段直接 422）：
 
 ```json
 {
-  "title": "服务器宕机告警",
-  "content": "node-3 失联超过 60s",
-  "priority": "emergency"
+  "title": "任务完成",
+  "content": "已执行完毕",
+  "content_type": "plain"
 }
 ```
 
-强制并发触发紧急通道（即便主链命中也并发）：
+`content_type` 可选 `plain` / `markdown` / `html`，默认 `plain`。需要附件时传 `attachments`（目前仅 email 渠道支持）。
 
-```json
-{
-  "title": "严重告警",
-  "content": "数据库连接耗尽",
-  "force_emergency": true
-}
+调用示例：
+
+```powershell
+curl -X POST http://your-host:8080/api/notify `
+  -H "X-API-Key: <你的 key>" `
+  -H "Content-Type: application/json" `
+  -d '{\"title\":\"任务完成\",\"content\":\"已执行完毕\"}'
 ```
 
-按类型/名称筛选、覆盖目标、覆盖配置（与 v0.1 一致）：
-
-```json
-{
-  "title": "仅发邮件",
-  "content": "只发给指定邮箱",
-  "channel_ids": [2],
-  "target_overrides": { "2": "your-account@example.com" },
-  "config_overrides": {
-    "1": { "bark_group": "任务通知", "bark_sound": "bell" }
-  }
-}
-```
-
-响应体新增**链路可视化字段**：
+响应体：
 
 ```json
 {
   "success": true,
   "request_id": "8e0f...c1",
-  "priority": "normal",
   "escalated": false,
   "chains": [
     {
-      "primary": { "channel_id": 1, "channel_name": "我的 Bark", "success": false, "role": "primary", "detail": "..." },
-      "backups": [
-        { "channel_id": 2, "channel_name": "QQ邮箱1", "success": true, "role": "backup", "original_channel_id": 1, "detail": "..." }
-      ],
+      "primary": { "channel_id": 1, "channel_name": "我的 Bark", "success": true, "role": "primary", "detail": "..." },
+      "backups": [],
       "success": true,
-      "final_role": "backup"
+      "final_role": "primary"
     }
   ],
   "emergency_attempts": [],
@@ -207,22 +176,12 @@ Content-Type: application/json
 }
 ```
 
-### 查询
+`escalated=true` 表示主链全部失败、已自动升级到紧急通道。
 
-- `GET /api/status`：平台总览（含 `emergency_count`）。
-- `GET /api/channels`：所有渠道（含 `backup_channel_ids` / `is_emergency` / `priority`）。
-- `GET /api/channels/emergency`：紧急通道列表。
-- `GET /api/channels/status`：每个渠道本地校验状态。
-- `GET /api/logs`：最近 50 条发送日志。
-- `GET /api/logs/{request_id}`：按请求 ID 聚合的所有尝试日志。
-- `POST /api/channels/{channel_id}/test`：单通道测试发送（不走备用/紧急链路）。
+### 管理接口（WebUI 专用）
 
-## 你当前给的渠道如何录入
+> 这些接口只供前端 WebUI 使用，不对外公开文档。外部程序只需要 `/api/notify`。
 
-你给的两组 QQ 邮箱参数里，只有 `imap_host` / `imap_port`，但发送邮件实际要走 `SMTP`。QQ 邮箱通常可直接改成：
+包含：渠道类型元信息、渠道 CRUD、备用组更新、单通道测试发送、平台总览状态、日志查询、WebUI 测试发送。所有路径前缀 `/admin/api/`，需 `X-API-Key`。
 
-- `smtp_host`: `smtp.qq.com`
-- `smtp_port`: `465`
-- `use_ssl`: `true`
-
-`imap_host` 会被后端兼容转换为 `smtp_host`，但推荐直接保存为 `smtp.qq.com` + `465` + `use_ssl: true`。
+WebUI 已封装好全部管理操作，无需手动调用这些接口。

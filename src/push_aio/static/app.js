@@ -220,7 +220,7 @@ async function submitChannelForm(event) {
   }
 
   const priority = Number(formData.get("priority")) || 100;
-  await api("/api/channels", {
+  await api("/admin/api/channels", {
     method: "POST",
     body: JSON.stringify({
       name: formData.get("name"),
@@ -297,13 +297,13 @@ async function handleChannelAction(event) {
 
   if (action === "delete") {
     if (!confirm("确认删除这个渠道？")) return;
-    await api(`/api/channels/${id}`, { method: "DELETE" });
+    await api(`/admin/api/channels/${id}`, { method: "DELETE" });
     await loadAll();
     return;
   }
 
   if (action === "test") {
-    const result = await api(`/api/channels/${id}/test`, { method: "POST" });
+    const result = await api(`/admin/api/channels/${id}/test`, { method: "POST" });
     alert(`${result.channel_name}：${result.success ? "成功" : "失败"}\n${result.detail}`);
     await loadLogs();
     return;
@@ -311,7 +311,8 @@ async function handleChannelAction(event) {
 
   if (action === "toggle-enabled") {
     const ch = state.channels.find((x) => x.id === id);
-    await api(`/api/channels/${id}`, {
+    if (!ch) return;
+    await api(`/admin/api/channels/${id}`, {
       method: "PUT",
       body: JSON.stringify({ enabled: !ch.enabled }),
     });
@@ -321,7 +322,8 @@ async function handleChannelAction(event) {
 
   if (action === "toggle-emergency") {
     const ch = state.channels.find((x) => x.id === id);
-    await api(`/api/channels/${id}`, {
+    if (!ch) return;
+    await api(`/admin/api/channels/${id}`, {
       method: "PUT",
       body: JSON.stringify({ is_emergency: !ch.is_emergency }),
     });
@@ -371,7 +373,7 @@ function openBackupModal(channelId) {
       const ids = Array.from(root.querySelectorAll('input[type="checkbox"]:checked')).map(
         (i) => Number(i.value)
       );
-      await api(`/api/channels/${channelId}/backups`, {
+      await api(`/admin/api/channels/${channelId}/backups`, {
         method: "PUT",
         body: JSON.stringify({ backup_channel_ids: ids }),
       });
@@ -388,7 +390,7 @@ function closeBackupModal() {
   root.innerHTML = "";
 }
 
-/* ============ 发送通知 ============ */
+/* ============ 测试发送 ============ */
 async function submitNotifyForm(event) {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
@@ -397,12 +399,11 @@ async function submitNotifyForm(event) {
     title: formData.get("title"),
     content: formData.get("content"),
     content_type: formData.get("content_type"),
-    priority: formData.get("priority"),
-    force_emergency: formData.get("force_emergency") === "on",
   };
+  // WebUI 测试发送可选指定渠道，不传则走全自动调度
   if (channelIds) payload.channel_ids = channelIds;
 
-  const result = await api("/api/notify", {
+  const result = await api("/admin/api/notify", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -419,9 +420,6 @@ function renderNotifyResult(result) {
   let escalationBanner = "";
   if (result.escalated) {
     escalationBanner = `<div class="banner warn">⚠ 主链全部失败，已自动升级到紧急通道</div>`;
-  }
-  if ((result.priority === "emergency" || result.force_emergency) && result.emergency_attempts.length) {
-    escalationBanner += `<div class="banner info">⚡ 紧急通道已并发触发</div>`;
   }
 
   const chainsHtml = result.chains.map((chain) => {
@@ -478,17 +476,17 @@ function renderStats() {
 }
 
 async function loadStatus() {
-  state.status = await api("/api/status");
+  state.status = await api("/admin/api/status");
   renderStats();
 }
 
 async function loadChannels() {
-  state.channels = await api("/api/channels");
+  state.channels = await api("/admin/api/channels");
   renderChannels();
 }
 
 async function loadLogs() {
-  const logs = await api("/api/logs");
+  const logs = await api("/admin/api/logs");
   const container = document.getElementById("logs");
   if (!logs.length) {
     container.innerHTML = `<div class="card meta">暂无发送日志。</div>`;
@@ -535,7 +533,7 @@ async function bootstrap() {
     promptApiKey(false);
     return;
   }
-  state.metas = await api("/api/channel-types");
+  state.metas = await api("/admin/api/channel-types");
   renderChannelForm();
   await loadAll();
   document.getElementById("notify-form").addEventListener("submit", submitNotifyForm);

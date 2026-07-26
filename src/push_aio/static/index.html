@@ -35,8 +35,8 @@
 
         <section class="panel glass">
           <div class="panel-head">
-            <h2>发送通知</h2>
-            <span class="hint">观察故障切换链路</span>
+            <h2>测试发送</h2>
+            <span class="hint">验证推送链路是否正常</span>
           </div>
           <form id="notify-form" class="form">
             <label>
@@ -56,18 +56,7 @@
               </select>
             </label>
             <label>
-              <span>优先级</span>
-              <select name="priority">
-                <option value="normal">normal · 主链全失败后升级紧急</option>
-                <option value="emergency">emergency · 主链与紧急通道并发</option>
-              </select>
-            </label>
-            <label class="check">
-              <input type="checkbox" name="force_emergency" />
-              <span>强制触发紧急通道（即便主链命中也并发）</span>
-            </label>
-            <label>
-              <span>筛选通道 ID（逗号分隔，留空=全部启用的主通道）</span>
+              <span>测试渠道 ID（逗号分隔，留空=走全自动调度）</span>
               <input name="channel_ids" placeholder="例如：1,2,3" />
             </label>
             <button type="submit">发送</button>
