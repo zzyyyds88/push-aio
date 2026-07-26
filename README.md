@@ -31,6 +31,31 @@ pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 `pip install -e .` 会按 `pyproject.toml` 安装依赖并以可编辑模式注册 `push_aio` 包。
 
+## 配置 API Key（必填）
+
+本服务设计为公网部署，所有 `/api/*` 接口（`/api/health` 除外）都需要 API Key 鉴权，未配置则拒绝启动。
+
+1. 复制示例配置：
+
+```powershell
+cp .env.example .env
+```
+
+2. 生成随机 Key 并填入 `.env`：
+
+```powershell
+# PowerShell 生成 32 位随机串
+-join ((48..57)+(65..90)+(97..122) | Get-Random -Count 32 | % {[char]$_})
+```
+
+3. 编辑 `.env`：
+
+```
+PUSH_AIO_API_KEY=<你刚生成的随机串>
+```
+
+`.env` 已在 `.gitignore` 中，不会上传到 git。
+
 ## 启动（固定端口 8080）
 
 ```powershell
@@ -80,6 +105,8 @@ uvicorn push_aio.main:app --host 0.0.0.0 --port 8080 --reload
 
 ## API 速查
 
+> 所有 `/api/*` 接口（`/api/health` 除外）都需要在请求头携带 `X-API-Key: <你的 key>`。前端首次访问会弹窗输入并存到 localStorage，外部程序调用时手动加这个 header。
+
 ### 新增渠道
 
 ```http
@@ -113,6 +140,8 @@ PUT /api/channels/{channel_id}/backups
 
 ```http
 POST /api/notify
+X-API-Key: <你的 key>
+Content-Type: application/json
 ```
 
 最简形式（发给所有启用的主通道）：

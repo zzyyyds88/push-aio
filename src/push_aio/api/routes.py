@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.db import get_db
+from ..core.security import RequireApiKey
 from ..models import Channel, DeliveryLog
 from ..schemas import (
     BackupGroupUpdate,
@@ -22,7 +23,10 @@ from ..schemas import (
 from ..services.channels import registry
 from ..services.dispatcher import dispatch, dispatch_single
 
-router = APIRouter(prefix="/api")
+# 健康检查接口：不需要鉴权（让外部监控能直接探活）
+public_router = APIRouter(prefix="/api")
+# 业务接口：全部需要 X-API-Key 鉴权
+router = APIRouter(prefix="/api", dependencies=[RequireApiKey])
 
 
 def _serialize_channel(channel: Channel) -> ChannelOut:
@@ -62,7 +66,7 @@ def _channel_status(channel: Channel) -> ChannelStatusOut:
     )
 
 
-@router.get("/health")
+@public_router.get("/health")
 def health():
     return {"ok": True}
 

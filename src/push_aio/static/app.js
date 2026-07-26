@@ -1,19 +1,82 @@
+const API_KEY_STORAGE = "push_aio_api_key";
+
 const state = {
   metas: [],
   channels: [],
   status: null,
+  apiKey: localStorage.getItem(API_KEY_STORAGE) || "",
 };
 
+function getApiKey() {
+  return state.apiKey || localStorage.getItem(API_KEY_STORAGE) || "";
+}
+
+function setApiKey(key) {
+  state.apiKey = key;
+  if (key) {
+    localStorage.setItem(API_KEY_STORAGE, key);
+  } else {
+    localStorage.removeItem(API_KEY_STORAGE);
+  }
+}
+
 async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const key = getApiKey();
+  if (key) headers["X-API-Key"] = key;
+  const res = await fetch(path, { ...options, headers });
+  if (res.status === 401) {
+    // API Key 失效或缺失：清掉旧 Key 并弹出输入框
+    setApiKey("");
+    promptApiKey(true);
+    throw new Error("API Key 无效或缺失");
+  }
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
     throw new Error(payload.detail || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+function promptApiKey(isReauth = false) {
+  const root = document.getElementById("modal-root");
+  root.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3>${isReauth ? "API Key 失效，请重新输入" : "首次访问 · 请输入 API Key"}</h3>
+      <p class="meta">从服务器 .env 文件中 PUSH_AIO_API_KEY 的值复制。Key 会存到浏览器 localStorage，后续请求自动携带。</p>
+      <label>
+        <span>API Key</span>
+        <input id="api-key-input" type="password" placeholder="粘贴 API Key" />
+      </label>
+      <div class="modal-foot">
+        <button type="button" data-modal-action="save">保存</button>
+      </div>
+    </div>
+  `;
+  root.classList.add("show");
+  root.setAttribute("aria-hidden", "false");
+  const input = root.querySelector("#api-key-input");
+  input.focus();
+  root.querySelector('[data-modal-action="save"]').addEventListener("click", async () => {
+    const value = input.value.trim();
+    if (!value) {
+      alert("API Key 不能为空");
+      return;
+    }
+    setApiKey(value);
+    closeBackupModal();
+    // 重新拉取数据
+    try {
+      await bootstrap();
+    } catch (e) {
+      promptApiKey(true);
+    }
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      root.querySelector('[data-modal-action="save"]').click();
+    }
+  });
 }
 
 function escapeHtml(input) {
@@ -61,10 +124,7 @@ function renderChannelForm() {
       <span>名称</span>
       <input name="name" required placeholder="例如：我的 Bark" />
     </label>
-    <label>
-      <span>默认目标</span>
-      <input name="default_target" placeholder="Email 可填收件人，Bark 留空" />
-    </label>
+    <div id="default-target-wrap" class="form"></div>
     <div id="config-fields" class="form"></div>
     <label class="check">
       <input type="checkbox" name="is_emergency" />
@@ -86,34 +146,53 @@ function renderChannelForm() {
 function renderConfigFields(type) {
   const meta = state.metas.find((item) => item.type === type);
   const container = document.getElementById("config-fields");
-  const targetInput = document.querySelector('input[name="default_target"]');
-  if (targetInput) {
-    targetInput.placeholder = meta.target_label || "渠道自带目标时可留空";
+  // 只在 external 类型渠道（如 email）显示"默认目标"字段；embedded 类型目标已嵌入配置
+  const targetWrap = document.getElementById("default-target-wrap");
+  if (meta.target_mode === "external") {
+    targetWrap.innerHTML = `
+      <label>
+        <span>默认目标 ${meta.target_label ? "(" + escapeHtml(meta.target_label) + ")" : ""}</span>
+        <input name="default_target" placeholder="${escapeHtml(meta.target_label || "")}" />
+      </label>
+    `;
+  } else {
+    targetWrap.innerHTML = "";
   }
-  container.innerHTML = Object.entries(meta.config_schema)
-    .map(([key, schema]) => {
-      const label = typeof schema === "string" ? schema : schema.label;
-      const kind = typeof schema === "string" ? "text" : schema.type || "text";
-      const inputType = schema.secret ? "password" : kind === "number" ? "number" : "text";
-      const required = schema.required ? "required" : "";
-      const value = schema.default !== null && schema.default !== undefined ? `value="${escapeHtml(schema.default)}"` : "";
-      if (kind === "boolean") {
-        const checked = schema.default ? "checked" : "";
-        return `
-          <label class="check">
-            <input name="config.${escapeHtml(key)}" type="checkbox" ${checked} />
-            <span>${escapeHtml(label)}</span>
-          </label>
-        `;
-      }
+  const entries = Object.entries(meta.config_schema);
+  const requiredFields = entries.filter(([_, s]) => s && s.required);
+  const optionalFields = entries.filter(([_, s]) => !s || !s.required);
+
+  const renderField = ([key, schema]) => {
+    const label = typeof schema === "string" ? schema : schema.label;
+    const kind = typeof schema === "string" ? "text" : schema.type || "text";
+    const inputType = schema.secret ? "password" : kind === "number" ? "number" : "text";
+    const required = schema.required ? "required" : "";
+    const value = schema.default !== null && schema.default !== undefined ? `value="${escapeHtml(schema.default)}"` : "";
+    if (kind === "boolean") {
+      const checked = schema.default ? "checked" : "";
       return `
-        <label>
-          <span>${escapeHtml(label)}${schema.required ? " *" : ""}</span>
-          <input name="config.${escapeHtml(key)}" type="${inputType}" ${required} ${value} />
+        <label class="check">
+          <input name="config.${escapeHtml(key)}" type="checkbox" ${checked} />
+          <span>${escapeHtml(label)}</span>
         </label>
       `;
-    })
-    .join("");
+    }
+    return `
+      <label>
+        <span>${escapeHtml(label)}${schema.required ? " *" : ""}</span>
+        <input name="config.${escapeHtml(key)}" type="${inputType}" ${required} ${value} />
+      </label>
+    `;
+  };
+
+  const requiredHtml = requiredFields.map(renderField).join("");
+  const optionalHtml = optionalFields.map(renderField).join("");
+  container.innerHTML = requiredHtml + (optionalHtml ? `
+    <details class="advanced">
+      <summary>高级配置（${optionalFields.length} 项，通常可不填）</summary>
+      <div class="form">${optionalHtml}</div>
+    </details>
+  ` : "");
 }
 
 async function submitChannelForm(event) {
@@ -451,13 +530,25 @@ async function loadAll() {
 }
 
 async function bootstrap() {
+  // 无 API Key 时先弹窗
+  if (!getApiKey()) {
+    promptApiKey(false);
+    return;
+  }
   state.metas = await api("/api/channel-types");
   renderChannelForm();
   await loadAll();
   document.getElementById("notify-form").addEventListener("submit", submitNotifyForm);
   document.getElementById("reload-btn").addEventListener("click", loadAll);
+  document.getElementById("reset-key-btn").addEventListener("click", () => {
+    setApiKey("");
+    promptApiKey(true);
+  });
 }
 
 bootstrap().catch((error) => {
-  document.body.innerHTML = `<pre style="padding:24px;color:#b91c1c;">${escapeHtml(error.message)}</pre>`;
+  // 401 已在 api() 内处理，这里只兜底其他错误
+  if (error.message && !error.message.includes("API Key")) {
+    document.body.innerHTML = `<pre style="padding:24px;color:#b91c1c;">${escapeHtml(error.message)}</pre>`;
+  }
 });

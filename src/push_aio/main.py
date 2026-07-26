@@ -7,9 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api.routes import router
-from .core.db import Base, engine
+from .api.routes import public_router, router
 from .core.bootstrap import bootstrap_channels_if_needed
+from .core.db import Base, engine
+from .core.security import ensure_api_key_configured
 
 
 # 固定端口 8080：用户偏好不通过 CLI/环境变量覆盖。
@@ -18,7 +19,10 @@ APP_PORT = 8080
 # 静态资源随包打包：src/push_aio/static/
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-app = FastAPI(title="push-aio", version="0.2.0")
+# 启动前强制校验：未配置 API Key 则拒绝启动（公网部署不允许裸奔）
+ensure_api_key_configured()
+
+app = FastAPI(title="push-aio", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,7 +33,8 @@ app.add_middleware(
 # 自动建表（仅 create_all，不做迁移；表结构变更需手动删 data/push_aio.db 重建）
 Base.metadata.create_all(bind=engine)
 bootstrap_channels_if_needed()
-app.include_router(router)
+app.include_router(public_router)  # /api/health 等公开接口
+app.include_router(router)         # 业务接口（需 X-API-Key）
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 

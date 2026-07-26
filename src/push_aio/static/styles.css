@@ -532,3 +532,49 @@ code {
     flex-wrap: wrap;
   }
 }
+
+/* 高级配置折叠面板 */
+details.advanced {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.45);
+  overflow: hidden;
+}
+
+details.advanced > summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+
+details.advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.advanced > summary::before {
+  content: "▸";
+  font-size: 11px;
+  transition: transform 0.2s;
+  color: var(--brand);
+}
+
+details.advanced[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+details.advanced > summary:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+details.advanced > .form {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.3);
+}
