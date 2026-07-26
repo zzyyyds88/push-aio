@@ -1,0 +1,47 @@
+[
+  {
+    "name": "我的 Bark",
+    "type": "bark",
+    "enabled": true,
+    "config": {
+      "bark_base_url": "https://api.day.app/你的设备码"
+    },
+    "is_emergency": false,
+    "priority": 100,
+    "backup_channel_ids": []
+  },
+  {
+    "name": "QQ邮箱1",
+    "type": "email",
+    "enabled": true,
+    "default_target": "your-account-1@example.com",
+    "config": {
+      "smtp_host": "smtp.qq.com",
+      "smtp_port": 465,
+      "use_ssl": true,
+      "email": "your-account-1@example.com",
+      "auth_code": "QQ邮箱授权码",
+      "from_name": "QQ邮箱"
+    },
+    "is_emergency": false,
+    "priority": 100,
+    "backup_channel_ids": []
+  },
+  {
+    "name": "QQ邮箱2",
+    "type": "email",
+    "enabled": true,
+    "default_target": "your-account-2@example.com",
+    "config": {
+      "smtp_host": "smtp.qq.com",
+      "smtp_port": 465,
+      "use_ssl": true,
+      "email": "your-account-2@example.com",
+      "auth_code": "QQ邮箱授权码",
+      "from_name": "QQ邮箱"
+    },
+    "is_emergency": true,
+    "priority": 50,
+    "backup_channel_ids": []
+  }
+]

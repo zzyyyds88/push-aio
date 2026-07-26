@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>push-aio · 统一推送</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true"></div>
+
+    <div class="page">
+      <header class="hero glass">
+        <div class="hero-text">
+          <p class="eyebrow">Unified Push Platform</p>
+          <h1>push-aio</h1>
+          <p class="lead">主通道 → 备用通道 → 紧急通道，三层故障切换的统一推送平台。</p>
+        </div>
+        <div class="hero-stats" id="hero-stats">
+          <div class="stat"><span class="num" id="stat-online">0</span><span class="lbl">在线</span></div>
+          <div class="stat"><span class="num" id="stat-emergency">0</span><span class="lbl">紧急</span></div>
+          <div class="stat"><span class="num" id="stat-supported">0</span><span class="lbl">支持</span></div>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="panel glass">
+          <div class="panel-head">
+            <h2>新增渠道</h2>
+            <span class="hint">支持备用组与紧急标记</span>
+          </div>
+          <form id="channel-form" class="form"></form>
+        </section>
+
+        <section class="panel glass">
+          <div class="panel-head">
+            <h2>发送通知</h2>
+            <span class="hint">观察故障切换链路</span>
+          </div>
+          <form id="notify-form" class="form">
+            <label>
+              <span>标题</span>
+              <input name="title" required maxlength="255" />
+            </label>
+            <label>
+              <span>内容</span>
+              <textarea name="content" rows="5" required></textarea>
+            </label>
+            <label>
+              <span>内容格式</span>
+              <select name="content_type">
+                <option value="plain">纯文本</option>
+                <option value="markdown">Markdown</option>
+                <option value="html">HTML</option>
+              </select>
+            </label>
+            <label>
+              <span>优先级</span>
+              <select name="priority">
+                <option value="normal">normal · 主链全失败后升级紧急</option>
+                <option value="emergency">emergency · 主链与紧急通道并发</option>
+              </select>
+            </label>
+            <label class="check">
+              <input type="checkbox" name="force_emergency" />
+              <span>强制触发紧急通道（即便主链命中也并发）</span>
+            </label>
+            <label>
+              <span>筛选通道 ID（逗号分隔，留空=全部启用的主通道）</span>
+              <input name="channel_ids" placeholder="例如：1,2,3" />
+            </label>
+            <button type="submit">发送</button>
+          </form>
+          <div id="notify-result" class="result"></div>
+        </section>
+
+        <section class="panel glass wide">
+          <div class="panel-head">
+            <h2>渠道列表</h2>
+            <div class="actions">
+              <button id="reload-btn" type="button" class="secondary">刷新</button>
+            </div>
+          </div>
+          <div id="channels" class="list"></div>
+        </section>
+
+        <section class="panel glass wide">
+          <div class="panel-head">
+            <h2>最近日志</h2>
+            <span class="hint">每条记录含角色与请求 ID</span>
+          </div>
+          <div id="logs" class="list"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="modal-root" class="modal-root" aria-hidden="true"></div>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

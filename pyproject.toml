@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "push-aio"
+version = "0.2.0"
+description = "统一推送平台：主→备→紧急三层故障切换的多渠道消息分发服务"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "push-aio contributors" }]
+keywords = ["push", "notification", "bark", "email", "telegram", "fastapi"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications",
+]
+dependencies = [
+    "fastapi>=0.115.12",
+    "uvicorn[standard]>=0.34.2",
+    "sqlalchemy>=2.0.40",
+    "pydantic>=2.11.3",
+    "email-validator>=2.2.0",
+    "requests>=2.32.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/push-aio"
+Issues = "https://github.com/your-username/push-aio/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+push_aio = ["static/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

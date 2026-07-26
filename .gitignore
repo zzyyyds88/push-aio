@@ -1,0 +1,69 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# --- 虚拟环境 ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- 打包产物 ---
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# --- 测试 / 类型 / lint 缓存 ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- 操作系统 ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- 运行时数据（含用户隐私密钥，禁止上传） ---
+data/push_aio.db
+data/push_aio.db-journal
+data/push_aio.db-wal
+data/push_aio.db-shm
+data/bootstrap_channels.json
+data/*.log
+data/logs/
+logs/
+*.log
+
+# --- 环境变量 / 密钥 ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# --- 第三方参考源码副本（不属于本项目，不上传） ---
+example/
+
+# --- 临时文件 ---
+*.tmp
+*.bak
+*~
+
+# --- 用户私有需求记录（含真实邮箱授权码 / Bark 设备码，禁止上传） ---
+目标.txt
+私有需求.txt
