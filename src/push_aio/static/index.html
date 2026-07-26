@@ -9,82 +9,198 @@
   <body>
     <div class="aurora" aria-hidden="true"></div>
 
-    <div class="page">
-      <header class="hero glass">
-        <div class="hero-text">
-          <p class="eyebrow">Unified Push Platform</p>
-          <h1>push-aio</h1>
-          <p class="lead">主通道 → 备用通道 → 紧急通道，三层故障切换的统一推送平台。</p>
+    <!-- 登录页 -->
+    <div id="login-view" class="login-view" hidden>
+      <div class="login-card glass">
+        <p class="eyebrow">Unified Push Platform</p>
+        <h1>push-aio</h1>
+        <p class="lead">主通道 → 备用通道 → 紧急通道，三层故障切换的统一推送平台。</p>
+        <form id="login-form" class="form">
+          <label>
+            <span>API Key（与 .env 中 PUSH_AIO_API_KEY 一致）</span>
+            <input name="key" type="password" required placeholder="粘贴 API Key" autocomplete="current-password" />
+          </label>
+          <button type="submit">登录</button>
+          <p id="login-error" class="banner bad" style="display:none;">Key 无效，请检查后重试</p>
+          <p class="meta">Key 会存到浏览器 localStorage，后续请求自动携带。</p>
+        </form>
+      </div>
+    </div>
+
+    <!-- 主应用 -->
+    <div id="app-view" class="app-view" hidden>
+      <aside class="sidebar glass">
+        <div class="brand">
+          <p class="eyebrow">push-aio</p>
+          <span class="brand-sub">统一推送</span>
         </div>
-        <div class="hero-stats" id="hero-stats">
-          <div class="stat"><span class="num" id="stat-online">0</span><span class="lbl">在线</span></div>
-          <div class="stat"><span class="num" id="stat-emergency">0</span><span class="lbl">紧急</span></div>
-          <div class="stat"><span class="num" id="stat-supported">0</span><span class="lbl">支持</span></div>
-          <button type="button" id="reset-key-btn" class="secondary" style="margin:0;align-self:center;">重设 API Key</button>
+        <nav class="nav">
+          <a href="#/dashboard" class="nav-item" data-route="dashboard">
+            <span class="nav-icon" aria-hidden="true">▦</span>
+            <span>看板</span>
+          </a>
+          <a href="#/channels" class="nav-item" data-route="channels">
+            <span class="nav-icon" aria-hidden="true">✉</span>
+            <span>通知配置</span>
+          </a>
+          <a href="#/settings" class="nav-item" data-route="settings">
+            <span class="nav-icon" aria-hidden="true">⚙</span>
+            <span>系统设置</span>
+          </a>
+        </nav>
+        <div class="sidebar-foot">
+          <button type="button" id="logout-btn" class="secondary">退出登录</button>
         </div>
-      </header>
+      </aside>
 
-      <main class="grid">
-        <section class="panel glass">
-          <div class="panel-head">
-            <h2>新增渠道</h2>
-            <span class="hint">支持备用组与紧急标记</span>
+      <main class="main">
+        <header class="topbar glass">
+          <h2 id="page-title">看板</h2>
+          <div class="topbar-actions">
+            <span id="conn-status" class="status-pill"><span class="status-dot"></span>在线</span>
+            <button type="button" id="refresh-btn" class="secondary" style="width:auto;padding:8px 14px;">刷新</button>
           </div>
-          <form id="channel-form" class="form"></form>
-        </section>
+        </header>
 
-        <section class="panel glass">
-          <div class="panel-head">
-            <h2>测试发送</h2>
-            <span class="hint">验证推送链路是否正常</span>
-          </div>
-          <form id="notify-form" class="form">
-            <label>
-              <span>标题</span>
-              <input name="title" required maxlength="255" />
-            </label>
-            <label>
-              <span>内容</span>
-              <textarea name="content" rows="5" required></textarea>
-            </label>
-            <label>
-              <span>内容格式</span>
-              <select name="content_type">
-                <option value="plain">纯文本</option>
-                <option value="markdown">Markdown</option>
-                <option value="html">HTML</option>
-              </select>
-            </label>
-            <label>
-              <span>测试渠道 ID（逗号分隔，留空=走全自动调度）</span>
-              <input name="channel_ids" placeholder="例如：1,2,3" />
-            </label>
-            <button type="submit">发送</button>
-          </form>
-          <div id="notify-result" class="result"></div>
-        </section>
-
-        <section class="panel glass wide">
-          <div class="panel-head">
-            <h2>渠道列表</h2>
-            <div class="actions">
-              <button id="reload-btn" type="button" class="secondary">刷新</button>
+        <!-- 看板页 -->
+        <section id="page-dashboard" class="page-content">
+          <div class="dashboard-grid">
+            <div class="stat-card glass">
+              <span class="num" id="stat-online">0</span>
+              <span class="lbl">在线渠道</span>
+            </div>
+            <div class="stat-card glass">
+              <span class="num" id="stat-enabled">0</span>
+              <span class="lbl">启用中</span>
+            </div>
+            <div class="stat-card glass">
+              <span class="num" id="stat-emergency">0</span>
+              <span class="lbl">紧急通道</span>
+            </div>
+            <div class="stat-card glass">
+              <span class="num" id="stat-supported">0</span>
+              <span class="lbl">支持类型</span>
             </div>
           </div>
-          <div id="channels" class="list"></div>
+
+          <section class="panel glass">
+            <div class="panel-head">
+              <h2>渠道状态概览</h2>
+              <span class="hint">点击渠道可前往配置页编辑</span>
+            </div>
+            <div id="dashboard-channels" class="list"></div>
+          </section>
+
+          <section class="panel glass">
+            <div class="panel-head">
+              <h2>最近推送</h2>
+              <span class="hint">最近 10 条记录</span>
+            </div>
+            <div id="dashboard-logs" class="list"></div>
+          </section>
         </section>
 
-        <section class="panel glass wide">
-          <div class="panel-head">
-            <h2>最近日志</h2>
-            <span class="hint">每条记录含角色与请求 ID</span>
+        <!-- 通知配置页 -->
+        <section id="page-channels" class="page-content" hidden>
+          <div class="channels-grid">
+            <section class="panel glass">
+              <div class="panel-head">
+                <h2>新增渠道</h2>
+                <span class="hint">支持备用组与紧急标记</span>
+              </div>
+              <form id="channel-form" class="form"></form>
+            </section>
+
+            <section class="panel glass">
+              <div class="panel-head">
+                <h2>测试发送</h2>
+                <span class="hint">验证推送链路是否正常</span>
+              </div>
+              <form id="notify-form" class="form">
+                <label>
+                  <span>标题</span>
+                  <input name="title" required maxlength="255" />
+                </label>
+                <label>
+                  <span>内容</span>
+                  <textarea name="content" rows="4" required></textarea>
+                </label>
+                <label>
+                  <span>内容格式</span>
+                  <select name="content_type">
+                    <option value="plain">纯文本</option>
+                    <option value="markdown">Markdown</option>
+                    <option value="html">HTML</option>
+                  </select>
+                </label>
+                <label>
+                  <span>测试渠道 ID（逗号分隔，留空=走全自动调度）</span>
+                  <input name="channel_ids" placeholder="例如：1,2,3" />
+                </label>
+                <button type="submit">发送</button>
+              </form>
+              <div id="notify-result" class="result"></div>
+            </section>
           </div>
-          <div id="logs" class="list"></div>
+
+          <section class="panel glass">
+            <div class="panel-head">
+              <h2>渠道列表</h2>
+              <span class="hint">点击渠道卡片右侧按钮操作</span>
+            </div>
+            <div id="channels" class="list"></div>
+          </section>
+        </section>
+
+        <!-- 系统设置页 -->
+        <section id="page-settings" class="page-content" hidden>
+          <section class="panel glass">
+            <div class="panel-head">
+              <h2>API Key</h2>
+              <span class="hint">WebUI 登录与外部调用共用同一把 Key</span>
+            </div>
+            <div class="kv">
+              <span class="kv-k">当前 Key（仅显示前 4 位与后 4 位）</span>
+              <code id="settings-key-masked">****</code>
+            </div>
+            <div class="kv">
+              <span class="kv-k">来源</span>
+              <span class="meta">服务器 .env 文件中的 PUSH_AIO_API_KEY</span>
+            </div>
+            <div class="row">
+              <button type="button" id="reset-key-btn" class="secondary">清除浏览器 Key 并重新登录</button>
+            </div>
+          </section>
+
+          <section class="panel glass">
+            <div class="panel-head">
+              <h2>外部调用示例</h2>
+              <span class="hint">外部程序通过此接口投递通知</span>
+            </div>
+            <p class="meta">接口：<code>POST /api/notify</code>，请求头需携带 <code>X-API-Key</code>。请求体严格模式，多传字段会被拒绝。</p>
+            <pre class="code-block">curl -X POST http://&lt;your-host&gt;:8080/api/notify \
+  -H "X-API-Key: &lt;你的 key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"任务完成","content":"已执行完毕"}'</pre>
+          </section>
+
+          <section class="panel glass">
+            <div class="panel-head">
+              <h2>调度策略</h2>
+              <span class="hint">系统固定，外部调用方无法干预</span>
+            </div>
+            <ol class="strategy">
+              <li>主通道（启用的非紧急通道，按 priority 升序）逐个尝试</li>
+              <li>主通道失败时，按其备用组顺序逐个尝试备用通道</li>
+              <li>所有主链全部失败且存在启用的紧急通道时，自动升级逐个尝试</li>
+            </ol>
+          </section>
         </section>
       </main>
     </div>
 
     <div id="modal-root" class="modal-root" aria-hidden="true"></div>
+    <div id="toast-root" class="toast-root" aria-hidden="true"></div>
 
     <script src="/assets/app.js"></script>
   </body>

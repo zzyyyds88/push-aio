@@ -93,6 +93,12 @@ def notify(payload: NotifyRequest, db: Session = Depends(get_db)):
 
 # ==================== 管理接口（WebUI 专用） ====================
 
+@admin_router.get("/auth/verify")
+def auth_verify():
+    """前端登录校验：带 X-API-Key 通过依赖即返回 200，否则 401。"""
+    return {"ok": True}
+
+
 @admin_router.get("/channel-types", response_model=list[ChannelMeta])
 def channel_types():
     return registry.meta()

@@ -4,32 +4,44 @@ const state = {
   metas: [],
   channels: [],
   status: null,
+  logs: [],
   apiKey: localStorage.getItem(API_KEY_STORAGE) || "",
+  route: "dashboard",
 };
 
+const ROUTE_TITLES = {
+  dashboard: "看板",
+  channels: "通知配置",
+  settings: "系统设置",
+};
+
+/* ============ Key 管理 ============ */
 function getApiKey() {
   return state.apiKey || localStorage.getItem(API_KEY_STORAGE) || "";
 }
 
 function setApiKey(key) {
   state.apiKey = key;
-  if (key) {
-    localStorage.setItem(API_KEY_STORAGE, key);
-  } else {
-    localStorage.removeItem(API_KEY_STORAGE);
-  }
+  if (key) localStorage.setItem(API_KEY_STORAGE, key);
+  else localStorage.removeItem(API_KEY_STORAGE);
 }
 
+function maskKey(key) {
+  if (!key) return "****";
+  if (key.length <= 8) return "****";
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
+/* ============ API 调用 ============ */
 async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   const key = getApiKey();
   if (key) headers["X-API-Key"] = key;
   const res = await fetch(path, { ...options, headers });
   if (res.status === 401) {
-    // API Key 失效或缺失：清掉旧 Key 并弹出输入框
     setApiKey("");
-    promptApiKey(true);
-    throw new Error("API Key 无效或缺失");
+    showLogin();
+    throw new Error("API Key 无效");
   }
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
@@ -38,47 +50,68 @@ async function api(path, options = {}) {
   return res.json();
 }
 
-function promptApiKey(isReauth = false) {
-  const root = document.getElementById("modal-root");
-  root.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true">
-      <h3>${isReauth ? "API Key 失效，请重新输入" : "首次访问 · 请输入 API Key"}</h3>
-      <p class="meta">从服务器 .env 文件中 PUSH_AIO_API_KEY 的值复制。Key 会存到浏览器 localStorage，后续请求自动携带。</p>
-      <label>
-        <span>API Key</span>
-        <input id="api-key-input" type="password" placeholder="粘贴 API Key" />
-      </label>
-      <div class="modal-foot">
-        <button type="button" data-modal-action="save">保存</button>
-      </div>
-    </div>
-  `;
-  root.classList.add("show");
-  root.setAttribute("aria-hidden", "false");
-  const input = root.querySelector("#api-key-input");
-  input.focus();
-  root.querySelector('[data-modal-action="save"]').addEventListener("click", async () => {
-    const value = input.value.trim();
-    if (!value) {
-      alert("API Key 不能为空");
-      return;
-    }
-    setApiKey(value);
-    closeBackupModal();
-    // 重新拉取数据
-    try {
-      await bootstrap();
-    } catch (e) {
-      promptApiKey(true);
-    }
-  });
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      root.querySelector('[data-modal-action="save"]').click();
-    }
-  });
+/* ============ Toast ============ */
+function toast(message, type = "ok") {
+  const root = document.getElementById("toast-root");
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  root.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
 }
 
+/* ============ 登录 / 登出 ============ */
+function showLogin() {
+  document.getElementById("login-view").hidden = false;
+  document.getElementById("app-view").hidden = true;
+}
+
+function showApp() {
+  document.getElementById("login-view").hidden = true;
+  document.getElementById("app-view").hidden = false;
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const input = event.currentTarget.key;
+  const key = input.value.trim();
+  if (!key) return;
+  setApiKey(key);
+  try {
+    await api("/admin/api/auth/verify");
+    input.value = "";
+    document.getElementById("login-error").style.display = "none";
+    showApp();
+    await bootstrap();
+    toast("登录成功");
+  } catch (e) {
+    setApiKey("");
+    document.getElementById("login-error").style.display = "flex";
+  }
+}
+
+function handleLogout() {
+  setApiKey("");
+  showLogin();
+}
+
+/* ============ 路由 ============ */
+function navigate(route) {
+  if (!ROUTE_TITLES[route]) route = "dashboard";
+  state.route = route;
+  document.querySelectorAll(".page-content").forEach((el) => {
+    el.hidden = el.id !== `page-${route}`;
+  });
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.route === route);
+  });
+  document.getElementById("page-title").textContent = ROUTE_TITLES[route];
+  if (route === "dashboard") renderDashboard();
+  if (route === "channels") renderChannelsPage();
+  if (route === "settings") renderSettingsPage();
+}
+
+/* ============ 工具 ============ */
 function escapeHtml(input) {
   return String(input ?? "")
     .replaceAll("&", "&amp;")
@@ -109,9 +142,129 @@ function parseChannelIds(value) {
   return ids.length ? ids : null;
 }
 
-/* ============ 新增渠道表单 ============ */
+/* ============ 看板页 ============ */
+function renderDashboard() {
+  if (!state.status) return;
+  document.getElementById("stat-online").textContent = state.status.online_count;
+  document.getElementById("stat-enabled").textContent = state.status.enabled_count;
+  document.getElementById("stat-emergency").textContent = state.status.emergency_count;
+  document.getElementById("stat-supported").textContent = state.status.supported_count;
+
+  // 渠道状态概览
+  const channelsBox = document.getElementById("dashboard-channels");
+  if (!state.channels.length) {
+    channelsBox.innerHTML = `<div class="card meta">还没有渠道，前往「通知配置」新增一个。</div>`;
+  } else {
+    channelsBox.innerHTML = state.channels
+      .map((item) => {
+        const meta = state.metas.find((m) => m.type === item.type);
+        const label = meta ? meta.label : item.type;
+        const statusTag = item.enabled
+          ? `<span class="tag ok">在线</span>`
+          : `<span class="tag muted">已禁用</span>`;
+        const emTag = item.is_emergency ? `<span class="tag emergency">紧急</span>` : "";
+        return `
+          <article class="card">
+            <div class="row">
+              <strong>${escapeHtml(item.name)}</strong>
+              <span class="tag muted">${escapeHtml(label)}</span>
+              ${statusTag}
+              ${emTag}
+              <span class="meta">#${item.id}</span>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
+  }
+
+  // 最近推送（取最近 10 条）
+  const logsBox = document.getElementById("dashboard-logs");
+  const logs = state.logs.slice(0, 10);
+  if (!logs.length) {
+    logsBox.innerHTML = `<div class="card meta">暂无发送日志。</div>`;
+  } else {
+    logsBox.innerHTML = logs
+      .map((item) => {
+        const roleTag = `<span class="${tagClassForRole(item.role)}">${roleLabel(item.role)}</span>`;
+        const successTag = item.success
+          ? `<span class="tag ok">成功</span>`
+          : `<span class="tag bad">失败</span>`;
+        return `
+          <article class="card">
+            <div class="row">
+              <strong>${escapeHtml(item.channel_name)}</strong>
+              ${roleTag}
+              ${successTag}
+              <span class="meta">${new Date(item.created_at).toLocaleString()}</span>
+            </div>
+            <p class="meta">${escapeHtml(item.title)}</p>
+          </article>
+        `;
+      })
+      .join("");
+  }
+}
+
+/* ============ 通知配置页 ============ */
+function renderChannelsPage() {
+  // 渠道列表
+  const container = document.getElementById("channels");
+  if (!state.channels.length) {
+    container.innerHTML = `<div class="card meta">还没有渠道，先在左侧新增一个。</div>`;
+    return;
+  }
+  container.innerHTML = state.channels
+    .map((item) => {
+      const meta = state.metas.find((m) => m.type === item.type);
+      const label = meta ? meta.label : item.type;
+      const backupNames = (item.backup_channel_ids || [])
+        .map((id) => {
+          const c = state.channels.find((x) => x.id === id);
+          return c ? c.name : `#${id}`;
+        })
+        .map((n) => `<span class="tag backup">${escapeHtml(n)}</span>`)
+        .join(" ");
+      const isEmergency = item.is_emergency;
+      return `
+        <article class="card">
+          <div class="row">
+            <strong>${escapeHtml(item.name)}</strong>
+            <span class="tag muted">${escapeHtml(label)}</span>
+            <span class="tag ${item.enabled ? "ok" : "bad"}">${item.enabled ? "已启用" : "已禁用"}</span>
+            ${isEmergency ? `<span class="tag emergency">紧急</span>` : ""}
+            <span class="tag muted">优先级 ${item.priority}</span>
+            <span class="meta">#${item.id}</span>
+          </div>
+          <p class="meta">默认目标：${escapeHtml(item.default_target || "无")}</p>
+          <p class="meta">备用组：${backupNames || '<span class="meta">未配置</span>'}</p>
+          <div class="row">
+            <button type="button" data-action="test" data-id="${item.id}">测试</button>
+            <button type="button" class="secondary" data-action="backups" data-id="${item.id}">编辑备用组</button>
+            <button type="button" class="secondary" data-action="toggle-emergency" data-id="${item.id}">
+              ${isEmergency ? "取消紧急" : "标记紧急"}
+            </button>
+            <button type="button" class="secondary" data-action="toggle-enabled" data-id="${item.id}">
+              ${item.enabled ? "禁用" : "启用"}
+            </button>
+            <button type="button" class="danger" data-action="delete" data-id="${item.id}">删除</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  container.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", handleChannelAction);
+  });
+}
+
 function renderChannelForm() {
   const form = document.getElementById("channel-form");
+  if (!state.metas.length) {
+    form.innerHTML = `<p class="meta">渠道元数据加载中…</p>`;
+    return;
+  }
   const options = state.metas
     .map((meta) => `<option value="${meta.type}">${escapeHtml(meta.label)}</option>`)
     .join("");
@@ -128,7 +281,7 @@ function renderChannelForm() {
     <div id="config-fields" class="form"></div>
     <label class="check">
       <input type="checkbox" name="is_emergency" />
-      <span>标记为紧急通道（用于全失败升级 / 显式 emergency 并发）</span>
+      <span>标记为紧急通道（用于全失败升级）</span>
     </label>
     <label>
       <span>优先级（数字越小越先尝试，默认 100）</span>
@@ -145,8 +298,8 @@ function renderChannelForm() {
 
 function renderConfigFields(type) {
   const meta = state.metas.find((item) => item.type === type);
+  if (!meta) return;
   const container = document.getElementById("config-fields");
-  // 只在 external 类型渠道（如 email）显示"默认目标"字段；embedded 类型目标已嵌入配置
   const targetWrap = document.getElementById("default-target-wrap");
   if (meta.target_mode === "external") {
     targetWrap.innerHTML = `
@@ -220,74 +373,27 @@ async function submitChannelForm(event) {
   }
 
   const priority = Number(formData.get("priority")) || 100;
-  await api("/admin/api/channels", {
-    method: "POST",
-    body: JSON.stringify({
-      name: formData.get("name"),
-      type,
-      enabled: true,
-      default_target: formData.get("default_target") || null,
-      config,
-      backup_channel_ids: [],
-      is_emergency: formData.get("is_emergency") === "on",
-      priority,
-    }),
-  });
-  event.currentTarget.reset();
-  renderConfigFields(type);
-  await loadAll();
-}
-
-/* ============ 渠道列表 ============ */
-function renderChannels() {
-  const container = document.getElementById("channels");
-  if (!state.channels.length) {
-    container.innerHTML = `<div class="card meta">还没有渠道，先在左侧新增一个。</div>`;
-    return;
+  try {
+    await api("/admin/api/channels", {
+      method: "POST",
+      body: JSON.stringify({
+        name: formData.get("name"),
+        type,
+        enabled: true,
+        default_target: formData.get("default_target") || null,
+        config,
+        backup_channel_ids: [],
+        is_emergency: formData.get("is_emergency") === "on",
+        priority,
+      }),
+    });
+    toast("渠道已保存");
+    event.currentTarget.reset();
+    renderConfigFields(type);
+    await loadAll();
+  } catch (e) {
+    toast(`保存失败：${e.message}`, "bad");
   }
-  container.innerHTML = state.channels
-    .map((item) => {
-      const meta = state.metas.find((m) => m.type === item.type);
-      const label = meta ? meta.label : item.type;
-      const backupNames = (item.backup_channel_ids || [])
-        .map((id) => {
-          const c = state.channels.find((x) => x.id === id);
-          return c ? c.name : `#${id}`;
-        })
-        .map((n) => `<span class="tag backup">${escapeHtml(n)}</span>`)
-        .join(" ");
-      const isEmergency = item.is_emergency;
-      return `
-        <article class="card">
-          <div class="row">
-            <strong>${escapeHtml(item.name)}</strong>
-            <span class="tag muted">${escapeHtml(label)}</span>
-            <span class="tag ${item.enabled ? "ok" : "bad"}">${item.enabled ? "已启用" : "已禁用"}</span>
-            ${isEmergency ? `<span class="tag emergency">紧急</span>` : ""}
-            <span class="tag muted">优先级 ${item.priority}</span>
-            <span class="meta">#${item.id}</span>
-          </div>
-          <p class="meta">默认目标：${escapeHtml(item.default_target || "无")}</p>
-          <p class="meta">备用组：${backupNames || '<span class="meta">未配置</span>'}</p>
-          <div class="row">
-            <button type="button" data-action="test" data-id="${item.id}">测试</button>
-            <button type="button" class="secondary" data-action="backups" data-id="${item.id}">编辑备用组</button>
-            <button type="button" class="secondary" data-action="toggle-emergency" data-id="${item.id}">
-              ${isEmergency ? "取消紧急" : "标记紧急"}
-            </button>
-            <button type="button" class="secondary" data-action="toggle-enabled" data-id="${item.id}">
-              ${item.enabled ? "禁用" : "启用"}
-            </button>
-            <button type="button" class="danger" data-action="delete" data-id="${item.id}">删除</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-
-  container.querySelectorAll("button").forEach((button) => {
-    button.addEventListener("click", handleChannelAction);
-  });
 }
 
 async function handleChannelAction(event) {
@@ -295,44 +401,51 @@ async function handleChannelAction(event) {
   const id = Number(button.dataset.id);
   const action = button.dataset.action;
 
-  if (action === "delete") {
-    if (!confirm("确认删除这个渠道？")) return;
-    await api(`/admin/api/channels/${id}`, { method: "DELETE" });
-    await loadAll();
-    return;
-  }
+  try {
+    if (action === "delete") {
+      if (!confirm("确认删除这个渠道？")) return;
+      await api(`/admin/api/channels/${id}`, { method: "DELETE" });
+      toast("已删除");
+      await loadAll();
+      return;
+    }
 
-  if (action === "test") {
-    const result = await api(`/admin/api/channels/${id}/test`, { method: "POST" });
-    alert(`${result.channel_name}：${result.success ? "成功" : "失败"}\n${result.detail}`);
-    await loadLogs();
-    return;
-  }
+    if (action === "test") {
+      const result = await api(`/admin/api/channels/${id}/test`, { method: "POST" });
+      alert(`${result.channel_name}：${result.success ? "成功" : "失败"}\n${result.detail}`);
+      await loadLogs();
+      return;
+    }
 
-  if (action === "toggle-enabled") {
-    const ch = state.channels.find((x) => x.id === id);
-    if (!ch) return;
-    await api(`/admin/api/channels/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({ enabled: !ch.enabled }),
-    });
-    await loadAll();
-    return;
-  }
+    if (action === "toggle-enabled") {
+      const ch = state.channels.find((x) => x.id === id);
+      if (!ch) return;
+      await api(`/admin/api/channels/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ enabled: !ch.enabled }),
+      });
+      toast(`已${ch.enabled ? "禁用" : "启用"}`);
+      await loadAll();
+      return;
+    }
 
-  if (action === "toggle-emergency") {
-    const ch = state.channels.find((x) => x.id === id);
-    if (!ch) return;
-    await api(`/admin/api/channels/${id}`, {
-      method: "PUT",
-      body: JSON.stringify({ is_emergency: !ch.is_emergency }),
-    });
-    await loadAll();
-    return;
-  }
+    if (action === "toggle-emergency") {
+      const ch = state.channels.find((x) => x.id === id);
+      if (!ch) return;
+      await api(`/admin/api/channels/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ is_emergency: !ch.is_emergency }),
+      });
+      toast(ch.is_emergency ? "已取消紧急标记" : "已标记为紧急");
+      await loadAll();
+      return;
+    }
 
-  if (action === "backups") {
-    openBackupModal(id);
+    if (action === "backups") {
+      openBackupModal(id);
+    }
+  } catch (e) {
+    toast(`操作失败：${e.message}`, "bad");
   }
 }
 
@@ -373,12 +486,17 @@ function openBackupModal(channelId) {
       const ids = Array.from(root.querySelectorAll('input[type="checkbox"]:checked')).map(
         (i) => Number(i.value)
       );
-      await api(`/admin/api/channels/${channelId}/backups`, {
-        method: "PUT",
-        body: JSON.stringify({ backup_channel_ids: ids }),
-      });
-      closeBackupModal();
-      await loadAll();
+      try {
+        await api(`/admin/api/channels/${channelId}/backups`, {
+          method: "PUT",
+          body: JSON.stringify({ backup_channel_ids: ids }),
+        });
+        toast("备用组已更新");
+        closeBackupModal();
+        await loadAll();
+      } catch (e) {
+        toast(`保存失败：${e.message}`, "bad");
+      }
     });
   });
 }
@@ -400,15 +518,19 @@ async function submitNotifyForm(event) {
     content: formData.get("content"),
     content_type: formData.get("content_type"),
   };
-  // WebUI 测试发送可选指定渠道，不传则走全自动调度
   if (channelIds) payload.channel_ids = channelIds;
 
-  const result = await api("/admin/api/notify", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  renderNotifyResult(result);
-  await loadLogs();
+  try {
+    const result = await api("/admin/api/notify", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    renderNotifyResult(result);
+    await loadLogs();
+    toast(result.success ? "发送完成" : "发送失败", result.success ? "ok" : "bad");
+  } catch (e) {
+    toast(`发送失败：${e.message}`, "bad");
+  }
 }
 
 function renderNotifyResult(result) {
@@ -422,7 +544,7 @@ function renderNotifyResult(result) {
     escalationBanner = `<div class="banner warn">⚠ 主链全部失败，已自动升级到紧急通道</div>`;
   }
 
-  const chainsHtml = result.chains.map((chain) => {
+  const chainsHtml = (result.chains || []).map((chain) => {
     const steps = [chain.primary, ...chain.backups];
     const stepsHtml = steps
       .map((step, idx) => {
@@ -435,14 +557,12 @@ function renderNotifyResult(result) {
     const headTag = chain.success
       ? `<span class="tag ok">链路成功</span>`
       : `<span class="tag bad">链路失败</span>`;
-    const finalTag = `<span class="tag muted">最终角色：${roleLabel(chain.final_role)}</span>`;
     const lastDetail = steps[steps.length - 1].detail;
     return `
       <div class="chain">
         <div class="chain-head">
           <strong>${escapeHtml(chain.primary.channel_name)}</strong>
           ${headTag}
-          ${finalTag}
         </div>
         <div class="chain-steps">${stepsHtml}</div>
         <div class="chain-detail">最后详情：${escapeHtml(lastDetail)}</div>
@@ -450,7 +570,7 @@ function renderNotifyResult(result) {
     `;
   }).join("");
 
-  const emHtml = result.emergency_attempts.length
+  const emHtml = (result.emergency_attempts || []).length
     ? result.emergency_attempts
         .map((e) => {
           const cls = e.success ? "ok" : "bad";
@@ -467,86 +587,76 @@ function renderNotifyResult(result) {
   `;
 }
 
-/* ============ 状态 / 统计 ============ */
-function renderStats() {
-  if (!state.status) return;
-  document.getElementById("stat-online").textContent = state.status.online_count;
-  document.getElementById("stat-emergency").textContent = state.status.emergency_count;
-  document.getElementById("stat-supported").textContent = state.status.supported_count;
+/* ============ 系统设置页 ============ */
+function renderSettingsPage() {
+  const masked = maskKey(getApiKey());
+  document.getElementById("settings-key-masked").textContent = masked;
 }
 
+/* ============ 数据加载 ============ */
 async function loadStatus() {
   state.status = await api("/admin/api/status");
-  renderStats();
 }
 
 async function loadChannels() {
   state.channels = await api("/admin/api/channels");
-  renderChannels();
 }
 
 async function loadLogs() {
-  const logs = await api("/admin/api/logs");
-  const container = document.getElementById("logs");
-  if (!logs.length) {
-    container.innerHTML = `<div class="card meta">暂无发送日志。</div>`;
-    return;
-  }
-  container.innerHTML = logs
-    .map((item) => {
-      const roleTag = `<span class="${tagClassForRole(item.role)}">${roleLabel(item.role)}</span>`;
-      const successTag = item.success
-        ? `<span class="tag ok">成功</span>`
-        : `<span class="tag bad">失败</span>`;
-      const origInfo = item.original_channel_id
-        ? `<span class="tag muted">替 #${item.original_channel_id}</span>`
-        : "";
-      const reqId = item.request_id
-        ? `<code>${escapeHtml(item.request_id.slice(0, 8))}</code>`
-        : "";
-      return `
-        <article class="card">
-          <div class="row">
-            <strong>${escapeHtml(item.channel_name)}</strong>
-            ${roleTag}
-            ${successTag}
-            ${origInfo}
-            <span class="meta">${new Date(item.created_at).toLocaleString()}</span>
-            ${reqId}
-          </div>
-          <p class="meta">标题：${escapeHtml(item.title)}</p>
-          <p class="meta">目标：${escapeHtml(item.target || "无")}</p>
-          <p>${escapeHtml(item.detail)}</p>
-        </article>
-      `;
-    })
-    .join("");
+  state.logs = await api("/admin/api/logs");
 }
 
 async function loadAll() {
   await Promise.all([loadStatus(), loadChannels(), loadLogs()]);
+  // 刷新当前页
+  if (state.route === "dashboard") renderDashboard();
+  if (state.route === "channels") renderChannelsPage();
+  if (state.route === "settings") renderSettingsPage();
 }
 
+/* ============ 启动 ============ */
 async function bootstrap() {
-  // 无 API Key 时先弹窗
-  if (!getApiKey()) {
-    promptApiKey(false);
-    return;
-  }
   state.metas = await api("/admin/api/channel-types");
   renderChannelForm();
   await loadAll();
-  document.getElementById("notify-form").addEventListener("submit", submitNotifyForm);
-  document.getElementById("reload-btn").addEventListener("click", loadAll);
-  document.getElementById("reset-key-btn").addEventListener("click", () => {
-    setApiKey("");
-    promptApiKey(true);
-  });
+  navigate("dashboard");
 }
 
-bootstrap().catch((error) => {
-  // 401 已在 api() 内处理，这里只兜底其他错误
-  if (error.message && !error.message.includes("API Key")) {
-    document.body.innerHTML = `<pre style="padding:24px;color:#b91c1c;">${escapeHtml(error.message)}</pre>`;
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("login-form").addEventListener("submit", handleLogin);
+  document.getElementById("logout-btn").addEventListener("click", handleLogout);
+  document.getElementById("refresh-btn").addEventListener("click", async () => {
+    try {
+      await loadAll();
+      toast("已刷新");
+    } catch (e) {
+      toast(`刷新失败：${e.message}`, "bad");
+    }
+  });
+  document.getElementById("reset-key-btn").addEventListener("click", () => {
+    setApiKey("");
+    showLogin();
+  });
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.preventDefault();
+      navigate(item.dataset.route);
+    });
+  });
+  // 通知配置页的测试发送表单
+  document.getElementById("notify-form").addEventListener("submit", submitNotifyForm);
+
+  // 已有 Key 则尝试登录，否则显示登录页
+  if (getApiKey()) {
+    api("/admin/api/auth/verify")
+      .then(() => {
+        showApp();
+        bootstrap().catch((e) => {
+          toast(`加载失败：${e.message}`, "bad");
+        });
+      })
+      .catch(() => showLogin());
+  } else {
+    showLogin();
   }
 });
