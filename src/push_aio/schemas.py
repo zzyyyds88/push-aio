@@ -38,8 +38,9 @@ class ChannelBase(BaseModel):
     enabled: bool = True
     default_target: str | None = Field(default=None, max_length=255)
     config: dict[str, Any]
-    backup_channel_ids: list[int] = Field(default_factory=list)
     is_emergency: bool = False
+    # 发送顺序：数字越小越先尝试。主通道组（is_emergency=False）和紧急通道组（is_emergency=True）
+    # 各自独立按 priority 升序排列。前端通过上移/下移按钮调整，无需手填。
     priority: int = Field(default=100, ge=0, le=1000)
 
 
@@ -52,7 +53,6 @@ class ChannelUpdate(BaseModel):
     enabled: bool | None = None
     default_target: str | None = Field(default=None, max_length=255)
     config: dict[str, Any] | None = None
-    backup_channel_ids: list[int] | None = None
     is_emergency: bool | None = None
     priority: int | None = Field(default=None, ge=0, le=1000)
 
@@ -63,11 +63,6 @@ class ChannelOut(ChannelBase):
     id: int
     created_at: datetime
     updated_at: datetime
-
-
-class BackupGroupUpdate(BaseModel):
-    """单独更新某渠道的备用组，避免和渠道本体配置耦合。"""
-    backup_channel_ids: list[int] = Field(default_factory=list)
 
 
 class ChannelMeta(BaseModel):
@@ -90,7 +85,6 @@ class ChannelStatusOut(BaseModel):
     default_target: str | None = None
     is_emergency: bool = False
     priority: int = 100
-    backup_channel_ids: list[int] = Field(default_factory=list)
     detail: str
 
 
@@ -165,21 +159,15 @@ class NotifyChannelResult(BaseModel):
     error_kind: ErrorKind = "none"
 
 
-class NotifyChainGroup(BaseModel):
-    """以一个主通道为根的整条尝试链路。"""
-    primary: NotifyChannelResult
-    backups: list[NotifyChannelResult] = Field(default_factory=list)
-    success: bool
-    final_role: DeliveryRole
-
-
 class NotifyResponse(BaseModel):
     success: bool
     request_id: str
-    chains: list[NotifyChainGroup]
+    # 主通道组按 priority 升序逐个尝试的记录（任一成功即停止）
+    main_attempts: list[NotifyChannelResult] = Field(default_factory=list)
+    # 主通道全失败后，紧急通道组按 priority 升序逐个尝试的记录
     emergency_attempts: list[NotifyChannelResult] = Field(default_factory=list)
     escalated: bool = False
-    results: list[NotifyChannelResult]  # 扁平结果
+    results: list[NotifyChannelResult]  # 扁平结果（main + emergency）
 
 
 class DeliveryLogOut(BaseModel):

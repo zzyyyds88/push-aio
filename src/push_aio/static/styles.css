@@ -539,6 +539,22 @@ code {
   gap: 6px;
 }
 
+/* 渠道分组标题（主通道组 / 紧急通道组 / 已禁用） */
+.group-title {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+  padding-left: 4px;
+  border-left: 3px solid var(--brand);
+  padding-left: 10px;
+}
+
+.group-title:first-child {
+  margin-top: 0;
+}
+
 .chain-step {
   display: inline-flex;
   align-items: center;

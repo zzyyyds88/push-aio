@@ -12,7 +12,6 @@ from ..core.security import RequireApiKey, set_api_key
 from ..models import Channel, DeliveryLog
 from ..schemas import (
     AdminNotifyRequest,
-    BackupGroupUpdate,
     ChangeKeyRequest,
     ChannelCreate,
     ChannelMeta,
@@ -74,7 +73,6 @@ def _channel_status(channel: Channel) -> ChannelStatusOut:
         default_target=channel.default_target,
         is_emergency=channel.is_emergency,
         priority=channel.priority,
-        backup_channel_ids=list(channel.backup_channel_ids or []),
         detail=detail,
     )
 
@@ -99,7 +97,7 @@ def notify(payload: NotifyRequest, db: Session = Depends(get_db)):
     """外部程序调用入口。
 
     只接受 title/content/content_type，调度策略由系统固定为：
-    主通道 → 备用通道 → 全失败升级紧急通道。
+    主通道组按顺序逐个尝试 → 全失败升级紧急通道组。
     """
     return dispatch(payload, db)
 
@@ -164,7 +162,6 @@ def create_channel(payload: ChannelCreate, db: Session = Depends(get_db)):
         enabled=payload.enabled,
         default_target=payload.default_target,
         config=validated_config,
-        backup_channel_ids=payload.backup_channel_ids,
         is_emergency=payload.is_emergency,
         priority=payload.priority,
     )
@@ -188,11 +185,6 @@ def update_channel(channel_id: int, payload: ChannelUpdate, db: Session = Depend
         channel.default_target = payload.default_target
     if payload.config is not None:
         channel.config = registry.validate(channel.type, payload.config)
-    if payload.backup_channel_ids is not None:
-        # 不允许把本通道自己设为备用
-        channel.backup_channel_ids = [
-            cid for cid in payload.backup_channel_ids if cid != channel.id
-        ]
     if payload.is_emergency is not None:
         channel.is_emergency = payload.is_emergency
     if payload.priority is not None:
@@ -204,19 +196,53 @@ def update_channel(channel_id: int, payload: ChannelUpdate, db: Session = Depend
     return _serialize_channel(channel)
 
 
-@admin_router.put("/channels/{channel_id}/backups", response_model=ChannelOut)
-def update_backup_group(
-    channel_id: int, payload: BackupGroupUpdate, db: Session = Depends(get_db)
-):
-    """单独更新某渠道的备用组。"""
+@admin_router.post("/channels/{channel_id}/move")
+def move_channel(channel_id: int, direction: str, db: Session = Depends(get_db)):
+    """调整渠道在所在组（主通道组或紧急通道组）内的发送顺序。
+
+    direction: "up" 上移（更先尝试）/ "down" 下移（更后尝试）
+
+    实现方式：取出同组内所有启用渠道（按 priority 升序），
+    在数组层面交换位置后，对整组重新分配 priority（10/20/30...），
+    保证顺序明确且 priority 值干净。禁用渠道不参与排序。
+    """
     channel = db.get(Channel, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="渠道不存在")
-    channel.backup_channel_ids = [cid for cid in payload.backup_channel_ids if cid != channel.id]
-    db.add(channel)
+    if direction not in ("up", "down"):
+        raise HTTPException(status_code=400, detail="direction 必须是 up 或 down")
+
+    # 同组（按 is_emergency 区分）的启用渠道，按 priority 升序、id 升序
+    siblings = list(
+        db.scalars(
+            select(Channel)
+            .where(
+                Channel.is_emergency.is_(channel.is_emergency),
+                Channel.enabled.is_(True),
+            )
+            .order_by(Channel.priority.asc(), Channel.id.asc())
+        ).all()
+    )
+    if len(siblings) < 2:
+        return {"ok": True, "hint": "组内仅一个渠道，无需调整"}
+
+    # 找到目标位置
+    index = next((i for i, c in enumerate(siblings) if c.id == channel_id), None)
+    if index is None:
+        raise HTTPException(status_code=400, detail="该渠道未启用，不参与排序")
+    if direction == "up" and index == 0:
+        return {"ok": True, "hint": "已在最前"}
+    if direction == "down" and index == len(siblings) - 1:
+        return {"ok": True, "hint": "已在最后"}
+
+    # 在数组层面交换位置，然后对整组重新分配 priority（10/20/30...）
+    swap_index = index - 1 if direction == "up" else index + 1
+    siblings[index], siblings[swap_index] = siblings[swap_index], siblings[index]
+    for i, c in enumerate(siblings):
+        c.priority = (i + 1) * 10
+        db.add(c)
     db.commit()
-    db.refresh(channel)
-    return _serialize_channel(channel)
+    return {"ok": True}
 
 
 @admin_router.delete("/channels/{channel_id}")

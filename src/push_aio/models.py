@@ -17,11 +17,13 @@ class Channel(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     default_target: Mapped[str | None] = mapped_column(String(255), nullable=True)
     config: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    # 备用通道组：当前通道发送失败时，按列表顺序尝试这些通道（id 列表）
+    # [已废弃 v0.5] 原"每个主通道独立备用组"模型，已改为全局有序列表调度
+    # 字段保留仅为兼容旧库，代码不再读写；新建渠道默认空列表
     backup_channel_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
-    # 是否为紧急通道：normal 请求全失败后升级、emergency 请求直接并发走这里
+    # 是否为紧急通道：主通道组全失败后自动升级到紧急通道组
     is_emergency: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    # 通道优先级，数字越小越先尝试；用于同组内排序
+    # 发送顺序：数字越小越先尝试。主通道组(is_emergency=False)与紧急通道组(is_emergency=True)
+    # 各自独立按 priority 升序排列。前端通过上移/下移按钮调整，无需手填。
     priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False

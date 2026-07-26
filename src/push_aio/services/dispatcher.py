@@ -11,7 +11,6 @@ from ..models import Channel, DeliveryLog
 from ..schemas import (
     AdminNotifyRequest,
     NotifyChannelResult,
-    NotifyChainGroup,
     NotifyRequest,
     NotifyResponse,
 )
@@ -34,7 +33,7 @@ def _send_one(
 
     决策：
     - 网络异常（Timeout/ConnectionError）→ 重试 1 次
-    - 限流/认证/配置/业务错误 → 不重试，直接返回（让调度器切换备用/紧急）
+    - 限流/认证/配置/业务错误 → 不重试，直接返回（让调度器切下一个通道）
     - 成功 → 立即返回
     """
     sender = registry.get(channel.type)
@@ -74,26 +73,10 @@ def _attempt(
     channel: Channel,
     payload: NotifyRequest | AdminNotifyRequest,
     role: str,
-    original_channel_id: int | None,
     db: Session,
     request_id: str,
-    tried: dict[int, NotifyChannelResult],
 ) -> NotifyChannelResult:
-    """对一个通道做一次完整尝试；同请求内已尝试的通道直接复用结果不重发。"""
-    if channel.id in tried:
-        cached = tried[channel.id]
-        return NotifyChannelResult(
-            channel_id=cached.channel_id,
-            channel_name=cached.channel_name,
-            channel_type=cached.channel_type,
-            success=cached.success,
-            target=cached.target,
-            detail=f"复用本次请求已尝试结果：{cached.detail}",
-            role=role,
-            original_channel_id=original_channel_id,
-            error_kind=cached.error_kind,
-        )
-
+    """对一个通道做一次完整尝试并记录日志。"""
     result = _send_one(channel, payload)
 
     db.add(
@@ -103,7 +86,7 @@ def _attempt(
             channel_name=channel.name,
             channel_type=channel.type,
             role=role,
-            original_channel_id=original_channel_id,
+            original_channel_id=None,
             success=result.success,
             target=channel.default_target,
             title=payload.title,
@@ -112,7 +95,7 @@ def _attempt(
         )
     )
 
-    out = NotifyChannelResult(
+    return NotifyChannelResult(
         channel_id=channel.id,
         channel_name=channel.name,
         channel_type=channel.type,
@@ -120,39 +103,28 @@ def _attempt(
         target=channel.default_target,
         detail=result.detail,
         role=role,
-        original_channel_id=original_channel_id,
+        original_channel_id=None,
         error_kind=result.error_kind if not result.success else "none",
     )
-    tried[channel.id] = out
-    return out
-
-
-def _resolve_backup(channel: Channel, backup_id: int, db: Session) -> Channel | None:
-    if backup_id == channel.id:
-        return None
-    backup = db.get(Channel, backup_id)
-    if not backup or not backup.enabled:
-        return None
-    return backup
 
 
 def dispatch(
     payload: NotifyRequest | AdminNotifyRequest,
     db: Session,
 ) -> NotifyResponse:
-    """固定调度策略：主通道 → 备用通道 → 全失败升级紧急通道。
+    """全局有序列表调度：主通道组按顺序逐个尝试 → 全失败升级紧急通道组。
 
     外部调用方（NotifyRequest）和 WebUI 测试发送（AdminNotifyRequest）共用此函数。
     AdminNotifyRequest 可选传 channel_ids 限定测试范围，不传则对所有启用通道走完整调度。
 
     切换决策（基于 error_kind）：
-    - 任何失败（rate_limit/auth/config/network/channel_error）都触发切换到备用通道
-    - 限流(rate_limit) 是最典型的切换场景：当前通道被限流，立即切到备用
-    - 所有主链全部失败时，升级到紧急通道
+    - 任何失败（rate_limit/auth/config/network/channel_error）都触发切换到下一个通道
+    - 限流(rate_limit) 是最典型的切换场景：当前通道被限流，立即切下一个
+    - 主通道组全部失败时，升级到紧急通道组
     """
     request_id = str(uuid.uuid4())
 
-    # 主通道：所有启用的非紧急通道（按 priority 升序）
+    # 主通道组：所有启用的非紧急通道（按 priority 升序）
     primary_query = select(Channel).where(
         Channel.enabled.is_(True),
         Channel.is_emergency.is_(False),
@@ -161,88 +133,53 @@ def dispatch(
     channel_ids = getattr(payload, "channel_ids", None)
     if channel_ids:
         primary_query = primary_query.where(Channel.id.in_(channel_ids))
-    primary_channels = list(
+    main_channels = list(
         db.scalars(primary_query.order_by(Channel.priority.asc(), Channel.id.asc())).all()
     )
 
-    # 紧急通道：仅在主链全失败时自动升级
+    # 紧急通道组：仅在主通道组全失败时自动升级
+    emergency_query = select(Channel).where(
+        Channel.enabled.is_(True),
+        Channel.is_emergency.is_(True),
+    )
+    if channel_ids:
+        emergency_query = emergency_query.where(Channel.id.in_(channel_ids))
     emergency_channels = list(
-        db.scalars(
-            select(Channel)
-            .where(Channel.enabled.is_(True), Channel.is_emergency.is_(True))
-            .order_by(Channel.priority.asc(), Channel.id.asc())
-        ).all()
+        db.scalars(emergency_query.order_by(Channel.priority.asc(), Channel.id.asc())).all()
     )
 
-    tried: dict[int, NotifyChannelResult] = {}
-    chains: list[NotifyChainGroup] = []
     flat_results: list[NotifyChannelResult] = []
 
-    # 主链路：每个主通道尝试 → 失败则按备用组顺序兜底
-    for primary in primary_channels:
-        primary_result = _attempt(
-            primary, payload, "primary", None, db, request_id, tried
-        )
-        flat_results.append(primary_result)
+    # 主通道组：按顺序逐个尝试，任一成功即停止
+    main_attempts: list[NotifyChannelResult] = []
+    for channel in main_channels:
+        result = _attempt(channel, payload, "primary", db, request_id)
+        main_attempts.append(result)
+        flat_results.append(result)
+        if result.success:
+            break
 
-        backups: list[NotifyChannelResult] = []
-        if not primary_result.success:
-            # 主通道失败（含限流），按备用组顺序逐个尝试
-            for backup_id in primary.backup_channel_ids or []:
-                backup = _resolve_backup(primary, backup_id, db)
-                if not backup:
-                    continue
-                backup_result = _attempt(
-                    backup, payload, "backup", primary.id, db, request_id, tried
-                )
-                backups.append(backup_result)
-                flat_results.append(backup_result)
-                if backup_result.success:
-                    break
-
-        chain_success = primary_result.success or any(b.success for b in backups)
-        if primary_result.success:
-            final_role = "primary"
-        elif any(b.success for b in backups):
-            final_role = "backup"
-        else:
-            final_role = "primary"  # 链路失败时，记主通道角色
-        chains.append(
-            NotifyChainGroup(
-                primary=primary_result,
-                backups=backups,
-                success=chain_success,
-                final_role=final_role,
-            )
-        )
-
-    primary_chain_success = any(c.success for c in chains)
+    # 主通道组全失败 且 存在紧急通道 → 升级到紧急通道组逐个尝试
     escalated = False
     emergency_attempts: list[NotifyChannelResult] = []
-
-    # 自动升级：主链全部失败 且 存在紧急通道 → 逐个尝试紧急通道
-    # 典型场景：主通道和备用通道都被限流/认证失败/网络异常 → 升级到紧急通道兜底
-    if not primary_chain_success and emergency_channels:
+    main_success = any(r.success for r in main_attempts)
+    if not main_success and emergency_channels:
         escalated = True
-        for em_ch in emergency_channels:
-            if em_ch.id in tried:
-                continue
-            em_result = _attempt(
-                em_ch, payload, "emergency", None, db, request_id, tried
-            )
-            emergency_attempts.append(em_result)
-            flat_results.append(em_result)
+        for channel in emergency_channels:
+            result = _attempt(channel, payload, "emergency", db, request_id)
+            emergency_attempts.append(result)
+            flat_results.append(result)
+            if result.success:
+                break
 
-    overall_success = primary_chain_success or any(
-        r.success for r in emergency_attempts
-    )
+    overall_success = main_success or any(r.success for r in emergency_attempts)
 
     db.commit()
 
     return NotifyResponse(
         success=overall_success,
         request_id=request_id,
-        chains=chains,
+        main_attempts=main_attempts,
         emergency_attempts=emergency_attempts,
         escalated=escalated,
         results=flat_results,
@@ -250,7 +187,7 @@ def dispatch(
 
 
 def dispatch_single(channel: Channel, db: Session) -> NotifyChannelResult:
-    """单通道测试发送，不走备用/紧急链路；用于 /admin/api/channels/{id}/test。"""
+    """单通道测试发送，不走主/紧急链路；用于 /admin/api/channels/{id}/test。"""
     request_id = str(uuid.uuid4())
     try:
         config = registry.validate(channel.type, dict(channel.config))

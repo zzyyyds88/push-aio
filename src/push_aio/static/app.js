@@ -235,52 +235,90 @@ function renderDashboard() {
 
 /* ============ 通知配置页 ============ */
 function renderChannelsPage() {
-  // 渠道列表
+  // 渠道列表按"主通道组 / 紧急通道组"分区显示
   const container = document.getElementById("channels");
   if (!state.channels.length) {
     container.innerHTML = `<div class="card meta">还没有渠道，先在左侧新增一个。</div>`;
     return;
   }
-  container.innerHTML = state.channels
-    .map((item) => {
-      const meta = state.metas.find((m) => m.type === item.type);
-      const label = meta ? meta.label : item.type;
-      const backupNames = (item.backup_channel_ids || [])
-        .map((id) => {
-          const c = state.channels.find((x) => x.id === id);
-          return c ? c.name : `#${id}`;
-        })
-        .map((n) => `<span class="tag backup">${escapeHtml(n)}</span>`)
-        .join(" ");
-      const isEmergency = item.is_emergency;
-      return `
-        <article class="card">
-          <div class="row">
-            <strong>${escapeHtml(item.name)}</strong>
-            <span class="tag muted">${escapeHtml(label)}</span>
-            <span class="tag ${item.enabled ? "ok" : "bad"}">${item.enabled ? "已启用" : "已禁用"}</span>
-            ${isEmergency ? `<span class="tag emergency">紧急</span>` : ""}
-            <span class="tag muted">优先级 ${item.priority}</span>
-            <span class="meta">#${item.id}</span>
-          </div>
-          <p class="meta">默认目标：${escapeHtml(item.default_target || "无")}</p>
-          <p class="meta">备用组：${backupNames || '<span class="meta">未配置</span>'}</p>
-          <div class="row">
-            <button type="button" data-action="test" data-id="${item.id}">测试</button>
-            <button type="button" class="secondary" data-action="backups" data-id="${item.id}">编辑备用组</button>
-            <button type="button" class="secondary" data-action="toggle-emergency" data-id="${item.id}">
-              ${isEmergency ? "取消紧急" : "标记紧急"}
-            </button>
-            <button type="button" class="secondary" data-action="toggle-enabled" data-id="${item.id}">
-              ${item.enabled ? "禁用" : "启用"}
-            </button>
-            <button type="button" class="danger" data-action="delete" data-id="${item.id}">删除</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
 
+  // 按启用状态 + is_emergency 分组；禁用渠道单独一列
+  const mainEnabled = state.channels.filter((c) => c.enabled && !c.is_emergency)
+    .sort((a, b) => (a.priority - b.priority) || (a.id - b.id));
+  const emEnabled = state.channels.filter((c) => c.enabled && c.is_emergency)
+    .sort((a, b) => (a.priority - b.priority) || (a.id - b.id));
+  const disabled = state.channels.filter((c) => !c.enabled);
+
+  const renderCard = (item, idx, total) => {
+    const meta = state.metas.find((m) => m.type === item.type);
+    const label = meta ? meta.label : item.type;
+    const isEmergency = item.is_emergency;
+    const orderTag = `<span class="tag muted">第 ${idx + 1} 顺位</span>`;
+    const upDisabled = idx === 0 ? "disabled" : "";
+    const downDisabled = idx === total - 1 ? "disabled" : "";
+    return `
+      <article class="card">
+        <div class="row">
+          <strong>${escapeHtml(item.name)}</strong>
+          <span class="tag muted">${escapeHtml(label)}</span>
+          <span class="tag ok">已启用</span>
+          ${isEmergency ? `<span class="tag emergency">紧急</span>` : ""}
+          ${orderTag}
+          <span class="meta">#${item.id}</span>
+        </div>
+        <p class="meta">默认目标：${escapeHtml(item.default_target || "无")}</p>
+        <div class="row">
+          <button type="button" data-action="test" data-id="${item.id}">测试</button>
+          <button type="button" class="secondary" data-action="move-up" data-id="${item.id}" ${upDisabled}>上移</button>
+          <button type="button" class="secondary" data-action="move-down" data-id="${item.id}" ${downDisabled}>下移</button>
+          <button type="button" class="secondary" data-action="toggle-emergency" data-id="${item.id}">
+            ${isEmergency ? "改为常规" : "改为紧急"}
+          </button>
+          <button type="button" class="secondary" data-action="toggle-enabled" data-id="${item.id}">禁用</button>
+          <button type="button" class="danger" data-action="delete" data-id="${item.id}">删除</button>
+        </div>
+      </article>
+    `;
+  };
+
+  const renderDisabledCard = (item) => {
+    const meta = state.metas.find((m) => m.type === item.type);
+    const label = meta ? meta.label : item.type;
+    return `
+      <article class="card">
+        <div class="row">
+          <strong>${escapeHtml(item.name)}</strong>
+          <span class="tag muted">${escapeHtml(label)}</span>
+          <span class="tag bad">已禁用</span>
+          ${item.is_emergency ? `<span class="tag emergency">紧急</span>` : ""}
+          <span class="meta">#${item.id}</span>
+        </div>
+        <div class="row">
+          <button type="button" data-action="toggle-enabled" data-id="${item.id}">启用</button>
+          <button type="button" class="danger" data-action="delete" data-id="${item.id}">删除</button>
+        </div>
+      </article>
+    `;
+  };
+
+  let html = "";
+  if (mainEnabled.length) {
+    html += `<h3 class="group-title">主通道组（按顺序逐个尝试）</h3>`;
+    html += mainEnabled.map((item, idx) => renderCard(item, idx, mainEnabled.length)).join("");
+  }
+  if (emEnabled.length) {
+    html += `<h3 class="group-title">紧急通道组（主通道全失败后升级）</h3>`;
+    html += emEnabled.map((item, idx) => renderCard(item, idx, emEnabled.length)).join("");
+  }
+  if (disabled.length) {
+    html += `<h3 class="group-title">已禁用渠道</h3>`;
+    html += disabled.map(renderDisabledCard).join("");
+  }
+  if (!mainEnabled.length && !emEnabled.length && !disabled.length) {
+    html = `<div class="card meta">还没有渠道，先在左侧新增一个。</div>`;
+  }
+
+  container.innerHTML = html;
   container.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", handleChannelAction);
   });
@@ -409,7 +447,6 @@ async function submitChannelForm(event) {
         enabled: true,
         default_target: formData.get("default_target") || null,
         config,
-        backup_channel_ids: [],
         is_emergency: formData.get("is_emergency") === "on",
         priority,
       }),
@@ -464,76 +501,20 @@ async function handleChannelAction(event) {
         method: "PUT",
         body: JSON.stringify({ is_emergency: !ch.is_emergency }),
       });
-      toast(ch.is_emergency ? "已取消紧急标记" : "已标记为紧急");
+      toast(ch.is_emergency ? "已改为常规通道" : "已改为紧急通道");
       await loadAll();
       return;
     }
 
-    if (action === "backups") {
-      openBackupModal(id);
+    if (action === "move-up" || action === "move-down") {
+      const direction = action === "move-up" ? "up" : "down";
+      await api(`/admin/api/channels/${id}/move?direction=${direction}`, { method: "POST" });
+      await loadAll();
+      return;
     }
   } catch (e) {
     toast(`操作失败：${e.message}`, "bad");
   }
-}
-
-/* ============ 备用组编辑模态 ============ */
-function openBackupModal(channelId) {
-  const channel = state.channels.find((x) => x.id === channelId);
-  if (!channel) return;
-  const candidates = state.channels.filter((x) => x.id !== channelId);
-  const selected = new Set(channel.backup_channel_ids || []);
-  const root = document.getElementById("modal-root");
-  root.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true">
-      <h3>编辑备用组 · ${escapeHtml(channel.name)}</h3>
-      <p class="meta">主通道发送失败时，按勾选顺序依次尝试这些通道。</p>
-      <div class="check-list">
-        ${candidates.map((c) => `
-          <label>
-            <input type="checkbox" value="${c.id}" ${selected.has(c.id) ? "checked" : ""} />
-            <span>${escapeHtml(c.name)} · ${escapeHtml(c.type)} ${c.is_emergency ? '<span class="tag emergency">紧急</span>' : ""}</span>
-          </label>
-        `).join("")}
-      </div>
-      <div class="modal-foot">
-        <button type="button" class="secondary" data-modal-action="cancel">取消</button>
-        <button type="button" data-modal-action="save">保存</button>
-      </div>
-    </div>
-  `;
-  root.classList.add("show");
-  root.setAttribute("aria-hidden", "false");
-
-  root.querySelectorAll("[data-modal-action]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      if (btn.dataset.modalAction === "cancel") {
-        closeBackupModal();
-        return;
-      }
-      const ids = Array.from(root.querySelectorAll('input[type="checkbox"]:checked')).map(
-        (i) => Number(i.value)
-      );
-      try {
-        await api(`/admin/api/channels/${channelId}/backups`, {
-          method: "PUT",
-          body: JSON.stringify({ backup_channel_ids: ids }),
-        });
-        toast("备用组已更新");
-        closeBackupModal();
-        await loadAll();
-      } catch (e) {
-        toast(`保存失败：${e.message}`, "bad");
-      }
-    });
-  });
-}
-
-function closeBackupModal() {
-  const root = document.getElementById("modal-root");
-  root.classList.remove("show");
-  root.setAttribute("aria-hidden", "true");
-  root.innerHTML = "";
 }
 
 /* ============ 测试发送 ============ */
@@ -569,61 +550,52 @@ function renderNotifyResult(result) {
     : `✗ 整体投递失败（请求 ID：${result.request_id}）`;
   let escalationBanner = "";
   if (result.escalated) {
-    escalationBanner = `<div class="banner warn">⚠ 主链全部失败，已自动升级到紧急通道</div>`;
+    escalationBanner = `<div class="banner warn">⚠ 主通道组全部失败，已自动升级到紧急通道组</div>`;
   }
 
-  const chainsHtml = (result.chains || []).map((chain) => {
-    const steps = [chain.primary, ...chain.backups];
-    const stepsHtml = steps
-      .map((step, idx) => {
-        const cls = step.success ? "ok" : "bad";
-        const arrow = idx > 0 ? `<span class="chain-arrow">→</span>` : "";
-        const role = step.role;
-        const errTag = step.success ? "" : errorKindTag(step.error_kind);
-        return `${arrow}<span class="chain-step ${cls}"><span class="${tagClassForRole(role)}">${roleLabel(role)}</span>${escapeHtml(step.channel_name)} ${step.success ? "✓" : "✗"}${errTag}</span>`;
-      })
-      .join("");
-    const headTag = chain.success
-      ? `<span class="tag ok">链路成功</span>`
-      : `<span class="tag bad">链路失败</span>`;
-    const lastStep = steps[steps.length - 1];
-    const lastDetail = lastStep.detail;
-    const lastErrLabel = lastStep.success ? "" : errorKindLabel(lastStep.error_kind);
-    const detailPrefix = lastErrLabel ? `最后详情（${lastErrLabel}）` : "最后详情";
-    return `
-      <div class="chain">
-        <div class="chain-head">
-          <strong>${escapeHtml(chain.primary.channel_name)}</strong>
-          ${headTag}
-        </div>
-        <div class="chain-steps">${stepsHtml}</div>
-        <div class="chain-detail">${detailPrefix}：${escapeHtml(lastDetail)}</div>
-      </div>
-    `;
-  }).join("");
+  // 渲染单条尝试步骤
+  const renderStep = (step, idx, total, showArrow) => {
+    const cls = step.success ? "ok" : "bad";
+    const arrow = showArrow ? `<span class="chain-arrow">→</span>` : "";
+    const role = step.role;
+    const errTag = step.success ? "" : errorKindTag(step.error_kind);
+    return `${arrow}<span class="chain-step ${cls}"><span class="${tagClassForRole(role)}">${roleLabel(role)}</span>${escapeHtml(step.channel_name)} ${step.success ? "✓" : "✗"}${errTag}</span>`;
+  };
 
-  const emHtml = (result.emergency_attempts || []).length
-    ? result.emergency_attempts
-        .map((e) => {
-          const cls = e.success ? "ok" : "bad";
-          const errTag = e.success ? "" : errorKindTag(e.error_kind);
-          return `<div class="chain-step ${cls}"><span class="tag emergency">紧急</span>${escapeHtml(e.channel_name)} ${e.success ? "✓" : "✗"}${errTag}</div>`;
-        })
-        .join("")
+  // 主通道组：一条链
+  const mainAttempts = result.main_attempts || [];
+  const mainHtml = mainAttempts.length
+    ? `<div class="chain-steps">${mainAttempts.map((s, i) => renderStep(s, i, mainAttempts.length, i > 0)).join("")}</div>`
+    : '<div class="meta">没有匹配到主通道。</div>';
+
+  // 紧急通道组
+  const emAttempts = result.emergency_attempts || [];
+  const emHtml = emAttempts.length
+    ? `<div class="chain-steps" style="margin-top:8px;">${emAttempts.map((s, i) => renderStep(s, i, emAttempts.length, i > 0)).join("")}</div>`
+    : "";
+
+  // 最后一条尝试的详情
+  const allSteps = [...mainAttempts, ...emAttempts];
+  const lastStep = allSteps[allSteps.length - 1];
+  const lastDetailHtml = lastStep
+    ? (() => {
+        const lastErrLabel = lastStep.success ? "" : errorKindLabel(lastStep.error_kind);
+        const detailPrefix = lastErrLabel ? `最后详情（${lastErrLabel}）` : "最后详情";
+        return `<div class="chain-detail">${detailPrefix}：${escapeHtml(lastStep.detail)}</div>`;
+      })()
     : "";
 
   container.innerHTML = `
     <div class="banner ${bannerClass}">${bannerText}</div>
     ${escalationBanner}
-    ${chainsHtml || '<div class="meta">没有匹配到主通道。</div>'}
-    ${emHtml ? `<div class="chain-steps" style="margin-top:8px;">${emHtml}</div>` : ""}
+    ${mainHtml}
+    ${emHtml}
+    ${lastDetailHtml}
   `;
 }
 
 /* ============ 系统设置页 ============ */
 function renderSettingsPage() {
-  const masked = maskKey(getApiKey());
-  document.getElementById("settings-key-masked").textContent = masked;
   // 重置错误提示
   const err = document.getElementById("change-key-error");
   err.style.display = "none";

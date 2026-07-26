@@ -168,10 +168,6 @@
               <h2>修改 API Key（密码）</h2>
               <span class="hint">WebUI 登录密码与外部调用 Key 是同一把</span>
             </div>
-            <div class="kv">
-              <span class="kv-k">当前 Key（仅显示前 4 位与后 4 位）</span>
-              <code id="settings-key-masked">****</code>
-            </div>
             <form id="change-key-form" class="form">
               <label>
                 <span>新 Key（至少 12 位）</span>
@@ -194,30 +190,6 @@
             <div class="row">
               <button type="button" id="reset-key-btn" class="secondary">清除浏览器 Key 并重新登录</button>
             </div>
-          </section>
-
-          <section class="panel glass">
-            <div class="panel-head">
-              <h2>外部调用示例</h2>
-              <span class="hint">完整说明见 <a href="/api/help" target="_blank">/api/help</a></span>
-            </div>
-            <p class="meta">接口：<code>POST /api/notify</code>，请求头需携带 <code>X-API-Key</code>。请求体严格模式，多传字段会被拒绝。</p>
-            <pre class="code-block">curl -X POST http://&lt;your-host&gt;:8080/api/notify \
-  -H "X-API-Key: &lt;你的 key&gt;" \
-  -H "Content-Type: application/json" \
-  -d '{"title":"任务完成","content":"已执行完毕"}'</pre>
-          </section>
-
-          <section class="panel glass">
-            <div class="panel-head">
-              <h2>调度策略</h2>
-              <span class="hint">系统固定，外部调用方无法干预</span>
-            </div>
-            <ol class="strategy">
-              <li>主通道（启用的非紧急通道，按 priority 升序）逐个尝试</li>
-              <li>主通道失败时，按其备用组顺序逐个尝试备用通道</li>
-              <li>所有主链全部失败且存在启用的紧急通道时，自动升级逐个尝试</li>
-            </ol>
           </section>
         </section>
       </main>
