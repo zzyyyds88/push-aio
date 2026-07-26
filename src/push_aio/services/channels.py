@@ -134,8 +134,10 @@ def classify_text(text: str) -> ErrorKind:
 def classify_response(*, status_code: int | None = None, body: Any = None) -> ErrorKind:
     """根据 HTTP 状态码 + 响应体识别错误类型。
 
-    - 429 → rate_limit
-    - 401/403 → auth
+    - 429 → rate_limit（被限流，立即切备用）
+    - 401/403 → auth（认证失败，立即切备用）
+    - 400 → config（请求格式错，需用户改配置）
+    - 5xx → network（服务端临时故障，可重试）
     - 其他状态码 + body 关键字命中 → 对应类型
     - 都不命中 → channel_error
     """
@@ -143,6 +145,10 @@ def classify_response(*, status_code: int | None = None, body: Any = None) -> Er
         return "rate_limit"
     if status_code in (401, 403):
         return "auth"
+    if status_code == 400:
+        return "config"
+    if status_code is not None and 500 <= status_code < 600:
+        return "network"
     body_text = json.dumps(body, ensure_ascii=False) if not isinstance(body, str) else body
     return classify_text(body_text)
 
@@ -279,14 +285,16 @@ class BarkSender(ChannelSender):
 class DingtalkSender(ChannelSender):
     type_name = "dingtalk_bot"
     label = "钉钉机器人"
-    # 钉钉 errcode: 130101 = 限流(发送频率过高)；310000 = token无效；400102 = 不存在的token
+    # 钉钉官方错误码（https://open.dingtalk.com/document/orgapp/custom-robots-send-group-messages）
+    # 限流：每机器人每分钟 20 条，超限限流 10 分钟，返回 410100
     errcode_map = {
-        130101: "rate_limit",
-        130102: "rate_limit",
-        310000: "auth",
-        400102: "auth",
-        400013: "auth",
-        88: "rate_limit",  # 发送频率超限
+        410100: "rate_limit",   # 发送速度太快而限流（真正的限流码）
+        90030: "rate_limit",    # webhook 调用次数达到上限（每日上限）
+        400101: "auth",         # access_token 不存在
+        88: "auth",             # access_token is blank
+        310000: "config",       # 安全校验失败：关键词未匹配 / 签名不匹配 / IP不在白名单 / timestamp无效
+        400102: "channel_error",  # 机器人已停用
+        400013: "channel_error",  # 群已被解散
     }
     config_schema = {
         "dd_bot_token": field("机器人 access_token", required=True, secret=True),
@@ -341,13 +349,16 @@ class DingtalkSender(ChannelSender):
 class FeishuSender(ChannelSender):
     type_name = "feishu_bot"
     label = "飞书/Lark 机器人"
-    # 飞书 code: 130102 = 限流；99991663 = token无效；99991664 = app未授权
+    # 飞书自定义机器人 webhook 错误码（https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot）
+    # 注意：webhook 机器人与 Open API 错误码完全不同，9999166x 是 Open API 码 webhook 不返回
+    # 限流：单租户单机器人 100 次/分钟 + 5 次/秒
     errcode_map = {
-        130102: "rate_limit",
-        99991663: "auth",
-        99991664: "auth",
-        99991661: "auth",
-        99991668: "auth",
+        11232: "rate_limit",  # create message service trigger rate limit
+        11247: "rate_limit",  # internal send message trigger rate limit
+        19021: "auth",        # 签名不匹配
+        19022: "auth",        # IP 不在白名单
+        19024: "auth",        # 关键词未匹配
+        9499: "config",       # 请求体格式错误（Bad Request）
     }
     config_schema = {
         "fskey": field("Webhook key 或完整 URL", required=True, secret=True),
@@ -505,12 +516,19 @@ class SynologyChatSender(ChannelSender):
 class PushPlusSender(ChannelSender):
     type_name = "pushplus"
     label = "PushPlus"
-    # PushPlus code: 900 = 限流（今日推送次数已达上限）；903 = token无效
+    # PushPlus 官方返回码（https://www.pushplus.plus/doc/guide/code.html）
+    # 限流：非会员每日 1000 次，触发 900 后账号级封禁 2~7 天
+    # 注意：901/902 在官方文档中不存在，是历史误录，已删除
     errcode_map = {
-        900: "rate_limit",
-        901: "rate_limit",
-        903: "auth",
-        902: "auth",
+        401: "auth",           # 请求未授权（开放接口未启用）
+        403: "auth",           # 请求 IP 未授权
+        500: "network",        # 系统异常（可重试）
+        600: "channel_error",  # 数据异常
+        888: "channel_error",  # 积分不足
+        900: "rate_limit",     # 用户账号使用受限（请求次数过多）
+        903: "auth",           # 无效的用户令牌
+        905: "config",         # 账户未实名认证
+        999: "channel_error",  # 服务端验证错误
     }
     config_schema = {
         "push_plus_token": field("用户令牌", required=True, secret=True),
@@ -580,14 +598,16 @@ class QmsgSender(ChannelSender):
 class WeComBotSender(ChannelSender):
     type_name = "wecom_bot"
     label = "企业微信机器人"
-    # 企业微信 errcode: 45009 = 接口调用频率限制；41001 = token无效；93000 = webhook失效
+    # 企业微信官方错误码（https://developer.work.weixin.qq.com/document/path/90313）
+    # 限流：每个 webhook 地址每分钟 20 条
+    # 注意：45100/93000/93001 在官方文档中不存在，是历史误录，已删除
     errcode_map = {
-        45009: "rate_limit",
-        45100: "rate_limit",
-        41001: "auth",
-        41004: "auth",
-        93000: "auth",
-        93001: "auth",
+        45009: "rate_limit",   # 接口调用超过限制
+        45033: "rate_limit",   # 接口并发调用超过限制
+        42001: "auth",         # access_token 已过期
+        40014: "auth",         # 不合法的 access_token
+        41001: "config",       # 缺少 access_token 参数
+        41004: "config",       # 缺少 secret 参数
     }
     config_schema = {
         "qywx_key": field("机器人 key", required=True, secret=True),
@@ -622,10 +642,11 @@ class WeComAppSender(ChannelSender):
     type_name = "wecom_app"
     label = "企业微信应用"
     errcode_map = {
-        45009: "rate_limit",
-        42001: "auth",  # access_token 过期
-        40014: "auth",  # token 无效
-        41001: "auth",
+        45009: "rate_limit",   # 接口调用超过限制
+        45033: "rate_limit",   # 接口并发调用超过限制
+        42001: "auth",         # access_token 已过期
+        40014: "auth",         # 不合法的 access_token
+        41001: "config",       # 缺少 access_token 参数
     }
     config_schema = {"qywx_am": field("corpid,corpsecret,touser,agentid[,media_id]", required=True, secret=True), "qywx_origin": field("企业微信 API Origin", default="https://qyapi.weixin.qq.com")}
 
@@ -937,6 +958,14 @@ class NtfySender(ChannelSender):
 class WxPusherSender(ChannelSender):
     type_name = "wxpusher"
     label = "WxPusher"
+    # WxPusher 官方错误码（code: 1000 = 成功）
+    errcode_map = {
+        1001: "auth",          # appToken 无效或缺失
+        1002: "config",        # content 为空
+        1003: "config",        # 无有效 UID/TopicId
+        1004: "auth",          # 应用不存在
+        1005: "channel_error", # 服务器内部错误
+    }
     config_schema = {"wxpusher_app_token": field("appToken", required=True, secret=True), "wxpusher_topic_ids": field("Topic IDs，多个用 ; 分隔"), "wxpusher_uids": field("UIDs，多个用 ; 分隔")}
 
     def send(self, *, title: str, content: str, config: dict[str, Any], target: str | None) -> SendResult:
@@ -951,7 +980,9 @@ class WxPusherSender(ChannelSender):
             data = response.text
         if isinstance(data, dict) and data.get("code") == 1000:
             return ok_detail(self.label)
-        return response_error(self.label, data, status_code=response.status_code)
+        code = data.get("code") if isinstance(data, dict) else None
+        kind = self.classify_errcode(code) or classify_response(status_code=response.status_code, body=data)
+        return SendResult.fail(f"{self.label} 返回异常: {data}", kind)
 
 
 class ChannelRegistry:
