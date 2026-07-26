@@ -143,9 +143,14 @@
                   </select>
                 </label>
                 <details class="advanced">
-                  <summary>限定测试渠道（默认走全自动调度）</summary>
-                  <div id="notify-channel-picker" class="check-list"></div>
-                  <p class="meta">勾选要测试的渠道；不勾选则走完整调度链路（主→紧急）。</p>
+                  <summary>限定渠道类型（默认走全自动调度）</summary>
+                  <label>
+                    <span>渠道类型</span>
+                    <select id="notify-channel-type" name="channel_type">
+                      <option value="">不限定（走全自动调度）</option>
+                    </select>
+                  </label>
+                  <p class="meta">选择渠道类型（如"钉钉机器人"）后，仅在该类型的启用渠道里走主→紧急调度；不选则走所有渠道。</p>
                 </details>
                 <button type="submit">发送</button>
               </form>

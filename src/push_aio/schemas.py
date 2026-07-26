@@ -110,8 +110,9 @@ class NotifyAttachment(BaseModel):
 class NotifyRequest(BaseModel):
     """外部调用接口的请求体。
 
-    外部调用方只能传消息内容，不能选择渠道、不能指定优先级——
-    调度策略由系统固定为：主通道 → 备用通道 → 全失败升级紧急通道。
+    外部调用方可选指定 channel_type（渠道类型，如 "dingtalk_bot"、"bark"），
+    系统在该类型的启用渠道里按 priority 逐个尝试 → 全失败升级全局紧急渠道。
+    不传 channel_type 则走所有渠道全局调度（兜底）。
     严格模式：传任何额外字段都会被拒绝（422）。
     """
 
@@ -121,6 +122,9 @@ class NotifyRequest(BaseModel):
     content: str = Field(..., min_length=1)
     content_type: Literal["plain", "html", "markdown"] = "plain"
     attachments: list[NotifyAttachment] | None = None
+    # 可选：指定渠道类型（如 "dingtalk_bot"）。不传则走所有渠道全局调度。
+    # 外部程序只需知道"我要钉钉推送"，不需知道具体渠道 ID。
+    channel_type: str | None = Field(default=None, max_length=50)
 
 
 class ChangeKeyRequest(BaseModel):
@@ -134,14 +138,16 @@ class ChangeKeyRequest(BaseModel):
 class AdminNotifyRequest(BaseModel):
     """WebUI 测试发送的请求体。
 
-    管理员可在 WebUI 上选择特定渠道进行测试，方便排查单个渠道问题。
-    不选渠道时与外部 NotifyRequest 行为一致（走全自动调度）。
+    管理员可在 WebUI 上选择渠道类型或具体渠道进行测试。
+    不选时与外部 NotifyRequest 行为一致（走全自动调度）。
     """
 
     title: str = Field(..., min_length=1, max_length=255)
     content: str = Field(..., min_length=1)
     content_type: Literal["plain", "html", "markdown"] = "plain"
     attachments: list[NotifyAttachment] | None = None
+    # 可选：指定渠道类型（如 "dingtalk_bot"），在该类型启用渠道里走调度
+    channel_type: str | None = Field(default=None, max_length=50)
     # 可选：只测试指定渠道（空则走全自动调度）
     channel_ids: list[int] | None = None
 

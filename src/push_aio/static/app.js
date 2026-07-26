@@ -510,29 +510,22 @@ async function handleChannelAction(event) {
 
 /* ============ 测试发送 ============ */
 function renderNotifyChannelPicker() {
-  // 渲染测试发送的渠道多选列表（默认折叠，不勾选=走全自动调度）
-  const container = document.getElementById("notify-channel-picker");
-  if (!container) return;
-  if (!state.channels.length) {
-    container.innerHTML = `<p class="meta">还没有渠道可测试</p>`;
-    return;
+  // 渲染渠道类型下拉：列出当前已配置渠道涉及的类型，方便测试发送时按类型筛选
+  const select = document.getElementById("notify-channel-type");
+  if (!select) return;
+  // 收集所有渠道涉及的类型（去重，保留中文标签）
+  const typeMap = new Map();
+  for (const c of state.channels) {
+    const meta = state.metas.find((m) => m.type === c.type);
+    const label = meta ? meta.label : c.type;
+    typeMap.set(c.type, label);
   }
-  container.innerHTML = state.channels
-    .map((c) => {
-      const meta = state.metas.find((m) => m.type === c.type);
-      const label = meta ? meta.label : c.type;
-      const emTag = c.is_emergency ? `<span class="tag emergency">紧急</span>` : "";
-      const enTag = c.enabled
-        ? `<span class="tag ok">启用</span>`
-        : `<span class="tag bad">禁用</span>`;
-      return `
-        <label>
-          <input type="checkbox" value="${c.id}" data-pick="1" />
-          <span>${escapeHtml(c.name)} · ${escapeHtml(label)} ${enTag} ${emTag}</span>
-        </label>
-      `;
-    })
-    .join("");
+  const current = select.value;
+  select.innerHTML = `<option value="">不限定（走全自动调度）</option>`
+    + Array.from(typeMap.entries())
+      .map(([type, label]) => `<option value="${escapeHtml(type)}">${escapeHtml(label)}</option>`)
+      .join("");
+  if (current) select.value = current;
 }
 
 async function submitNotifyForm(event) {
@@ -543,13 +536,9 @@ async function submitNotifyForm(event) {
     content: formData.get("content"),
     content_type: formData.get("content_type"),
   };
-  // 读取勾选的渠道 ID；未勾选则不传 channel_ids，走全自动调度
-  const picker = document.getElementById("notify-channel-picker");
-  if (picker) {
-    const checked = Array.from(picker.querySelectorAll('input[data-pick="1"]:checked'))
-      .map((i) => Number(i.value));
-    if (checked.length) payload.channel_ids = checked;
-  }
+  // 读取渠道类型；为空则不传，走全自动调度
+  const channelType = formData.get("channel_type");
+  if (channelType) payload.channel_type = channelType;
 
   try {
     const result = await api("/admin/api/notify", {

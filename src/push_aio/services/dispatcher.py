@@ -112,10 +112,14 @@ def dispatch(
     payload: NotifyRequest | AdminNotifyRequest,
     db: Session,
 ) -> NotifyResponse:
-    """全局有序列表调度：主通道组按顺序逐个尝试 → 全失败升级紧急通道组。
+    """按渠道类型分组的调度：主通道组按顺序逐个尝试 → 全失败升级全局紧急通道组。
 
-    外部调用方（NotifyRequest）和 WebUI 测试发送（AdminNotifyRequest）共用此函数。
-    AdminNotifyRequest 可选传 channel_ids 限定测试范围，不传则对所有启用通道走完整调度。
+    外部调用方（NotifyRequest）可选传 channel_type 指定渠道类型（如 "dingtalk_bot"）：
+    - 传 channel_type：在该类型的启用非紧急渠道里按 priority 逐个尝试 → 全失败升级全局紧急渠道
+    - 不传：在所有启用非紧急渠道里按 priority 逐个尝试 → 全失败升级全局紧急渠道
+    紧急渠道是全局兜底，不按类型筛选。
+
+    WebUI 测试发送（AdminNotifyRequest）可选传 channel_ids 限定测试具体渠道。
 
     切换决策（基于 error_kind）：
     - 任何失败（rate_limit/auth/config/network/channel_error）都触发切换到下一个通道
@@ -124,20 +128,24 @@ def dispatch(
     """
     request_id = str(uuid.uuid4())
 
-    # 主通道组：所有启用的非紧急通道（按 priority 升序）
+    # 主通道组：启用的非紧急通道（按 priority 升序）
     primary_query = select(Channel).where(
         Channel.enabled.is_(True),
         Channel.is_emergency.is_(False),
     )
-    # AdminNotifyRequest 可限定测试渠道
+    # 外部调用可指定渠道类型；WebUI 测试可指定具体渠道 ID
+    channel_type = getattr(payload, "channel_type", None)
     channel_ids = getattr(payload, "channel_ids", None)
+    if channel_type:
+        primary_query = primary_query.where(Channel.type == channel_type)
     if channel_ids:
         primary_query = primary_query.where(Channel.id.in_(channel_ids))
     main_channels = list(
         db.scalars(primary_query.order_by(Channel.priority.asc(), Channel.id.asc())).all()
     )
 
-    # 紧急通道组：仅在主通道组全失败时自动升级
+    # 紧急通道组：全局兜底，不按 channel_type 筛选
+    # 仅在主通道组全失败时自动升级。WebUI 测试 channel_ids 时也限定范围。
     emergency_query = select(Channel).where(
         Channel.enabled.is_(True),
         Channel.is_emergency.is_(True),
