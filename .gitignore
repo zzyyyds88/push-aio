@@ -38,23 +38,21 @@ Thumbs.db
 desktop.ini
 
 # --- 运行时数据（含用户隐私密钥，禁止上传） ---
-data/push_aio.db
-data/push_aio.db-journal
-data/push_aio.db-wal
-data/push_aio.db-shm
-data/bootstrap_channels.json
+data/pushhub.db
+data/pushhub.db-journal
+data/pushhub.db-wal
+data/pushhub.db-shm
 data/*.log
 data/logs/
 logs/
 *.log
 
-# --- 环境变量 / 密钥 ---
-.env
-.env.*
-!.env.example
+# --- 密钥文件 ---
 *.key
 *.pem
 secrets/
+.env
+.env.*
 
 # --- 第三方参考源码副本（不属于本项目，不上传） ---
 example/

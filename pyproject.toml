@@ -3,13 +3,13 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "push-aio"
-version = "0.2.0"
-description = "统一推送平台：主→备→紧急三层故障切换的多渠道消息分发服务"
+name = "pushhub"
+version = "0.4.0"
+description = "统一推送中心：主→备用→紧急两级故障切换的多渠道消息分发服务"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "push-aio contributors" }]
+authors = [{ name = "PushHub contributors" }]
 keywords = ["push", "notification", "bark", "email", "telegram", "fastapi"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -33,8 +33,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/push-aio"
-Issues = "https://github.com/your-username/push-aio/issues"
+Homepage = "https://github.com/zzyyyds88/pushhub"
+Issues = "https://github.com/zzyyyds88/pushhub/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -47,7 +47,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-push_aio = ["static/*"]
+pushhub = ["static/*"]
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PushHub · 调用说明</title>
+    <style>
+      :root {
+        --bg-1: #eef2ff;
+        --bg-2: #fdf2f8;
+        --bg-3: #ecfeff;
+        --ink: #0f172a;
+        --ink-soft: #1f2937;
+        --muted: #64748b;
+        --line: rgba(15, 23, 42, 0.08);
+        --brand: #6366f1;
+        --brand-2: #a855f7;
+        --brand-dark: #4338ca;
+        --ok: #10b981;
+        --bad: #ef4444;
+        --warn: #f59e0b;
+        --radius: 16px;
+        --radius-sm: 10px;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+                     "Segoe UI", "Microsoft YaHei", sans-serif;
+        color: var(--ink);
+        background: linear-gradient(135deg, var(--bg-1), var(--bg-2) 45%, var(--bg-3));
+        background-attachment: fixed;
+        -webkit-font-smoothing: antialiased;
+        letter-spacing: 0.01em;
+        line-height: 1.65;
+      }
+      .wrap {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 40px 20px 80px;
+      }
+      .hero {
+        background: rgba(255, 255, 255, 0.55);
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        border-radius: var(--radius);
+        padding: 28px 30px;
+        margin-bottom: 24px;
+        box-shadow: 0 24px 60px -20px rgba(79, 70, 229, 0.25);
+      }
+      .eyebrow {
+        margin: 0 0 6px;
+        color: var(--brand-dark);
+        font-size: 11px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.6rem, 3vw, 2.2rem);
+        letter-spacing: -0.02em;
+        background: linear-gradient(120deg, var(--brand), var(--brand-2));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .lead { margin: 0; color: var(--ink-soft); font-size: 14px; }
+      .panel {
+        background: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        border-radius: var(--radius);
+        padding: 22px 26px;
+        margin-bottom: 18px;
+        box-shadow: 0 12px 32px -16px rgba(79, 70, 229, 0.2);
+      }
+      h2 {
+        margin: 0 0 12px;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--brand-dark);
+      }
+      h3 {
+        margin: 16px 0 6px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      p { margin: 8px 0; font-size: 14px; }
+      code, pre {
+        font-family: "SF Mono", "JetBrains Mono", Consolas, monospace;
+        font-size: 13px;
+      }
+      code {
+        background: rgba(15, 23, 42, 0.06);
+        padding: 2px 6px;
+        border-radius: 6px;
+        color: var(--brand-dark);
+      }
+      pre {
+        margin: 10px 0;
+        padding: 16px 18px;
+        background: rgba(15, 23, 42, 0.88);
+        color: #e2e8f0;
+        border-radius: var(--radius-sm);
+        overflow-x: auto;
+        line-height: 1.6;
+        white-space: pre;
+      }
+      pre code { background: transparent; padding: 0; color: inherit; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0;
+        font-size: 13px;
+      }
+      th, td {
+        text-align: left;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; }
+      td code { font-size: 12px; }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        background: rgba(99, 102, 241, 0.16);
+        color: var(--brand-dark);
+      }
+      .tag.ok { background: rgba(16, 185, 129, 0.16); color: var(--ok); }
+      .tag.bad { background: rgba(239, 68, 68, 0.16); color: var(--bad); }
+      .tag.muted { background: rgba(100, 116, 139, 0.16); color: var(--muted); }
+      .note {
+        padding: 12px 16px;
+        border-radius: var(--radius-sm);
+        background: rgba(245, 158, 11, 0.12);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        color: #b45309;
+        font-size: 13px;
+        margin: 12px 0;
+      }
+      ul, ol { padding-left: 22px; font-size: 14px; }
+      li { margin: 4px 0; }
+      .back-link {
+        display: inline-block;
+        margin-top: 20px;
+        color: var(--brand-dark);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      @media (max-width: 600px) {
+        .wrap { padding: 20px 14px 60px; }
+        .hero, .panel { padding: 18px 16px; }
+        pre { font-size: 11px; padding: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="hero">
+        <p class="eyebrow">Unified Push Platform</p>
+        <h1>PushHub · 调用说明</h1>
+        <p class="lead">外部程序通过 <code>POST /api/notify</code> 投递通知，<strong>必须指定 <code>channel_type</code></strong>（渠道类型）。系统在该类型的启用非紧急渠道里按 <code>priority</code> 逐个尝试（主推送 → 备用1 → 备用2 ...），全失败自动升级<strong>全局紧急层级</strong>（所有紧急渠道<strong>并发发送</strong>，全部都发不提前停止）。</p>
+      </div>
+
+      <div class="panel">
+        <h2>接口概览</h2>
+        <table>
+          <thead>
+            <tr><th>方法</th><th>路径</th><th>鉴权</th><th>用途</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>GET</code></td><td><code>/api/health</code></td><td><span class="tag ok">无需</span></td><td>健康检查 / 监控探活</td></tr>
+            <tr><td><code>GET</code></td><td><code>/api/help</code></td><td><span class="tag ok">无需</span></td><td>本调用说明页</td></tr>
+            <tr><td><code>POST</code></td><td><code>/api/notify</code></td><td><span class="tag">X-API-Key</span></td><td>投递通知（外部程序唯一入口）</td></tr>
+          </tbody>
+        </table>
+        <p class="note">管理接口（渠道增删改、日志查看）只供 WebUI 使用，不对外公开。所有配置变更必须登录 WebUI 操作。</p>
+      </div>
+
+      <div class="panel">
+        <h2>鉴权方式</h2>
+        <p>所有需要鉴权的接口都必须在请求头携带：</p>
+        <pre><code>X-API-Key: &lt;你的 API Key&gt;</code></pre>
+        <p>API Key 与 WebUI 登录密码是同一把，保存在数据库的 <code>settings</code> 表中。<strong>首次启动时数据库无 Key，需访问 WebUI 完成初始化设置</strong>；设置后即可用于登录与外部调用。可在 WebUI「系统设置」页修改，修改后立即生效、无需重启。</p>
+        <p>未携带或携带错误返回 <code>401 Unauthorized</code>：</p>
+        <pre><code>{"detail": "无效或缺失的 API Key。请在请求头携带 X-API-Key。"}</code></pre>
+        <p class="note">首次启动尚未设置 Key 时，除 <code>GET /api/health</code>、<code>GET /api/help</code>、<code>GET /admin/api/auth/status</code>、<code>POST /admin/api/auth/setup</code> 外的所有接口都会返回 <code>401</code>，提示先完成初始化。</p>
+      </div>
+
+      <div class="panel">
+        <h2>投递通知</h2>
+        <h3>请求</h3>
+        <pre><code>POST /api/notify
+Content-Type: application/json
+X-API-Key: &lt;你的 API Key&gt;</code></pre>
+
+        <h3>请求体（严格模式）</h3>
+        <p>请求体启用 <code>extra=forbid</code> 严格模式，<strong>多传任何字段都会被拒绝（422）</strong>，防止外部调用方绕过系统调度策略。</p>
+        <table>
+          <thead>
+            <tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>title</code></td><td>string</td><td>是</td><td>通知标题，1-255 字符</td></tr>
+            <tr><td><code>content</code></td><td>string</td><td>是</td><td>通知正文</td></tr>
+            <tr><td><code>content_type</code></td><td>string</td><td>否</td><td><code>plain</code> / <code>markdown</code> / <code>html</code>，默认 <code>plain</code></td></tr>
+            <tr><td><code>attachments</code></td><td>array</td><td>否</td><td>附件列表（目前仅 email 渠道支持）</td></tr>
+            <tr><td><code>channel_type</code></td><td>string</td><td>是</td><td>必填：渠道类型（如 <code>dingtalk_bot</code> / <code>bark</code> / <code>feishu_bot</code>）。本系统按类型调度，不存在"全局主推送渠道"——调用方必须明确要发到哪种渠道。系统在该类型的启用非紧急渠道里按 <code>priority</code> 逐个尝试（主推送 → 备用1 → 备用2 ...），全失败再升级到全局紧急层级（并发发送）</td></tr>
+            <tr><td><code>extra</code></td><td>object</td><td>否</td><td>渠道特有的内容字段，透传给渠道。key 用渠道<strong>原生 API 字段名</strong>（非项目自定义命名）。渠道配置只保留连接凭证，内容字段全部走 <code>extra</code>，与各渠道原生调用机制一致。详见下方<a href="#extra-matrix">渠道内容字段矩阵</a>。</td></tr>
+          </tbody>
+        </table>
+        <p class="note"><code>extra</code> 不影响调度策略，仅透传给渠道用于构造 payload。调用方通过 <code>GET /admin/api/channel-types</code> 查看各渠道 <code>extra_schema</code>。</p>
+
+        <h3>最简调用（必须指定 channel_type）</h3>
+        <pre><code>curl -X POST http://&lt;your-host&gt;:8080/api/notify \
+  -H "X-API-Key: &lt;你的 key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"任务完成","content":"已执行完毕","channel_type":"dingtalk_bot"}'</code></pre>
+
+        <h3>Markdown 内容</h3>
+        <pre><code>curl -X POST http://&lt;your-host&gt;:8080/api/notify \
+  -H "X-API-Key: &lt;你的 key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"构建报告","content":"## 详情\n- 成功 12\n- 失败 0","content_type":"markdown","channel_type":"dingtalk_bot"}'</code></pre>
+
+        <h3>PowerShell 调用</h3>
+        <pre><code>Invoke-WebRequest -Uri http://&lt;your-host&gt;:8080/api/notify `
+  -Method POST `
+  -Headers @{ "X-API-Key" = "&lt;你的 key&gt;" } `
+  -ContentType "application/json" `
+  -Body '{"title":"任务完成","content":"已执行完毕","channel_type":"dingtalk_bot"}'</code></pre>
+
+        <h3>Python 调用（requests）</h3>
+        <pre><code>import requests
+
+resp = requests.post(
+    "http://&lt;your-host&gt;:8080/api/notify",
+    headers={"X-API-Key": "&lt;你的 key&gt;"},
+    json={"title": "任务完成", "content": "已执行完毕", "channel_type": "dingtalk_bot"},
+)
+print(resp.json())</code></pre>
+
+        <h3>按渠道类型调用（如钉钉推送）</h3>
+        <p>外部程序只需知道"我要钉钉推送"，不需知道具体渠道 ID。系统会在该类型所有启用的非紧急渠道里按 <code>priority</code> 逐个尝试（主推送 → 备用1 → 备用2 ...），全失败再升级到全局紧急层级（并发发送）。</p>
+        <pre><code>curl -X POST http://&lt;your-host&gt;:8080/api/notify \
+  -H "X-API-Key: &lt;你的 key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"任务完成","content":"已执行完毕","channel_type":"dingtalk_bot"}'</code></pre>
+        <pre><code># Python 示例：指定钉钉渠道类型
+resp = requests.post(
+    "http://&lt;your-host&gt;:8080/api/notify",
+    headers={"X-API-Key": "&lt;你的 key&gt;"},
+    json={
+        "title": "任务完成",
+        "content": "已执行完毕",
+        "channel_type": "dingtalk_bot",  # 必填：钉钉机器人
+    },
+)</code></pre>
+        <p class="note">常见 <code>channel_type</code> 值：<code>bark</code> / <code>dingtalk_bot</code> / <code>feishu_bot</code> / <code>wecom_bot</code> / <code>telegram_bot</code> / <code>email</code> / <code>pushplus</code> / <code>serverchan</code> 等。完整列表见 WebUI「通知配置」页的渠道类型下拉。</p>
+
+        <h3>extra 透传（渠道特有内容字段）</h3>
+        <p>渠道配置只保留连接凭证，内容字段通过 <code>extra</code> 按消息传递。key 用渠道原生 API 字段名，与原生调用机制一致。</p>
+        <pre><code># Bark 带副标题、声音、分组
+curl -X POST http://&lt;your-host&gt;:8080/api/notify \
+  -H "X-API-Key: &lt;你的 key&gt;" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"报警","content":"CPU 超过 90%","channel_type":"bark","extra":{"subtitle":"服务器告警","sound":"alarm","group":"监控"}}'</code></pre>
+        <pre><code># Telegram 禁用链接预览 + 静默发送
+resp = requests.post(
+    "http://&lt;your-host&gt;:8080/api/notify",
+    headers={"X-API-Key": "&lt;你的 key&gt;"},
+    json={
+        "title": "夜间任务完成",
+        "content": "构建成功",
+        "channel_type": "telegram_bot",
+        "extra": {"disable_web_page_preview": True, "disable_notification": True},
+    },
+)</code></pre>
+
+        <h3>响应体</h3>
+        <pre><code>{
+  "success": true,
+  "request_id": "8e0f1a2b-...-c1d2",
+  "escalated": false,
+  "main_attempts": [
+    {
+      "channel_id": 1,
+      "channel_name": "我的钉钉",
+      "channel_type": "dingtalk_bot",
+      "success": true,
+      "target": null,
+      "detail": "钉钉机器人 推送成功",
+      "role": "primary",
+      "original_channel_id": null,
+      "error_kind": "none"
+    }
+  ],
+  "emergency_attempts": [],
+  "results": [ ... ],
+  "final_channel_id": 1,
+  "final_channel_name": "我的钉钉",
+  "final_channel_type": "dingtalk_bot",
+  "final_role": "primary",
+  "total_attempts": 1
+}</code></pre>
+        <p class="note">如果同类型层级第 1 顺位失败、靠后面的备用渠道成功，<code>final_role</code> 会变成 <code>"backup"</code>；同类型层级全失败、靠全局紧急层级成功时为 <code>"emergency"</code>。调用方只需读 <code>final_role</code> + <code>final_channel_name</code> 就能知道这次走的是主推送、备用推送还是紧急渠道。</p>
+
+        <table>
+          <thead>
+            <tr><th>字段</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>success</code></td><td>整体是否投递成功</td></tr>
+            <tr><td><code>request_id</code></td><td>本次调用的唯一 ID，用于追溯日志</td></tr>
+            <tr><td><code>escalated</code></td><td><code>true</code> 表示同类型层级全部失败、已自动升级到全局紧急层级</td></tr>
+            <tr><td><code>main_attempts</code></td><td>同类型层级（主推送 + 备用）按 <code>priority</code> 升序逐个尝试的记录（任一成功即停止）</td></tr>
+            <tr><td><code>emergency_attempts</code></td><td>同类型层级全失败后，全局紧急层级并发发送的记录（所有紧急渠道都发，不提前停止；仅升级时非空）</td></tr>
+            <tr><td><code>results</code></td><td>所有尝试的扁平列表（main + emergency）</td></tr>
+            <tr><td><code>final_role</code></td><td>最终成功投递的角色：<code>"primary"</code>(主推送，第 1 顺位就成功) / <code>"backup"</code>(备用推送，前面有失败) / <code>"emergency"</code>(紧急渠道，同类型层级全失败)。全失败时为 <code>null</code></td></tr>
+            <tr><td><code>final_channel_id</code></td><td>最终成功投递的渠道 ID（全失败时为 <code>null</code>）</td></tr>
+            <tr><td><code>final_channel_name</code></td><td>最终成功投递的渠道名称（全失败时为 <code>null</code>）</td></tr>
+            <tr><td><code>final_channel_type</code></td><td>最终成功投递的渠道类型，如 <code>bark</code> / <code>dingtalk_bot</code>（全失败时为 <code>null</code>）</td></tr>
+            <tr><td><code>total_attempts</code></td><td>本次请求总共尝试的渠道数（含失败 + 成功）</td></tr>
+            <tr><td><code>error_kind</code></td><td>失败时的错误分类：<code>rate_limit</code>(限流) / <code>auth</code>(认证) / <code>config</code>(配置) / <code>network</code>(网络) / <code>channel_error</code>(业务错误)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>调度策略</h2>
+        <p>外部调用方<strong>必须指定 <code>channel_type</code></strong>（渠道类型），系统按类型调度，分两层依次补位：</p>
+        <ol>
+          <li>找出该类型所有启用的<strong>非紧急</strong>渠道（按 <code>priority</code> 升序）组成<strong>同类型层级</strong>（主推送 → 备用1 → 备用2 ...）</li>
+          <li>按顺位逐个尝试同类型层级：任一成功即停止。第 1 顺位成功为 <code>primary</code>，前面有失败靠后面的备用渠道成功为 <code>backup</code></li>
+          <li>同类型层级全部失败且存在启用的紧急渠道时，自动升级到<strong>全局紧急层级</strong>（不按类型筛选，所有紧急渠道<strong>并发发送</strong>，全部都发不提前停止）。任一紧急渠道成功即整体成功</li>
+        </ol>
+        <p>切换决策基于错误分类：</p>
+        <ul>
+          <li><code>rate_limit</code>(限流) / <code>auth</code>(认证) / <code>config</code>(配置) / <code>channel_error</code>(业务错误) → 不重试，立即切下一个渠道</li>
+          <li><code>network</code>(网络异常) → 重试 1 次后切下一个渠道</li>
+        </ul>
+        <p class="note"><strong>紧急渠道是全局共用的兜底</strong>，不绑定渠道类型——同类型层级是同类型内逐个尝试（主推送 + 备用），全局紧急层级是所有紧急渠道并发发送（不提前停止，确保最大送达率）。每个渠道仅尝试一次（去重），瞬时网络异常会重试 1 次。所有尝试写入日志，共享同一个 <code>request_id</code>。调用方读 <code>final_role</code> + <code>final_channel_name</code> 即可知道最终走的是主推送、备用推送还是紧急渠道。</p>
+      </div>
+
+      <div class="panel">
+        <h2>渠道格式支持矩阵</h2>
+        <p>调用方传 <code>content_type</code>（<code>plain</code> / <code>markdown</code> / <code>html</code>），兼容层自动适配：渠道支持就用请求格式，否则降级到该渠道的偏好格式（下表「偏好」列）。各渠道能力基于官方文档核实，文档存放在 <code>docs/channel-docs/</code>。</p>
+        <table>
+          <thead>
+            <tr><th>渠道类型</th><th>标签</th><th>支持格式</th><th>偏好</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>bark</code></td><td>Bark</td><td><code>plain</code> / <code>markdown</code></td><td><code>plain</code></td><td>markdown 字段由 iOS 客户端渲染，服务端透传</td></tr>
+            <tr><td><code>dingtalk_bot</code></td><td>钉钉机器人</td><td><code>plain</code> / <code>markdown</code></td><td><code>plain</code></td><td>钉钉官方支持 markdown msgtype</td></tr>
+            <tr><td><code>feishu_bot</code></td><td>飞书/Lark 机器人</td><td><code>plain</code></td><td><code>plain</code></td><td>webhook 仅支持 text/post/interactive，不传 markdown</td></tr>
+            <tr><td><code>wecom_bot</code></td><td>企业微信机器人</td><td><code>plain</code> / <code>markdown</code></td><td><code>plain</code></td><td>企业微信官方支持 markdown msgtype</td></tr>
+            <tr><td><code>wecom_app</code></td><td>企业微信应用</td><td><code>plain</code> / <code>markdown</code></td><td><code>plain</code></td><td>应用消息接口支持 markdown</td></tr>
+            <tr><td><code>telegram_bot</code></td><td>Telegram Bot</td><td><code>plain</code> / <code>markdown</code> / <code>html</code></td><td><code>markdown</code></td><td>parse_mode: MarkdownV2 / HTML</td></tr>
+            <tr><td><code>email</code></td><td>SMTP 邮件</td><td><code>plain</code> / <code>html</code></td><td><code>plain</code></td><td>html 邮件按 html 格式发送</td></tr>
+            <tr><td><code>server_chan</code></td><td>Server 酱</td><td><code>plain</code> / <code>markdown</code></td><td><code>markdown</code></td><td>官方默认按 markdown 渲染</td></tr>
+            <tr><td><code>pushdeer</code></td><td>PushDeer</td><td><code>plain</code> / <code>markdown</code></td><td><code>plain</code></td><td>type=text 或 type=markdown</td></tr>
+            <tr><td><code>pushplus</code></td><td>PushPlus</td><td><code>plain</code> / <code>html</code> / <code>markdown</code></td><td><code>html</code></td><td>template: txt/html/markdown</td></tr>
+            <tr><td><code>weplus_bot</code></td><td>微加机器人</td><td><code>plain</code> / <code>html</code></td><td><code>html</code></td><td>template: txt/html</td></tr>
+            <tr><td><code>wxpusher</code></td><td>WxPusher</td><td><code>plain</code> / <code>html</code> / <code>markdown</code></td><td><code>html</code></td><td>contentType: 1=txt 2=html 3=markdown</td></tr>
+            <tr><td><code>gotify</code></td><td>Gotify</td><td><code>plain</code> / <code>markdown</code> / <code>html</code></td><td><code>plain</code></td><td>extras.client::display.content_type</td></tr>
+            <tr><td><code>ntfy</code></td><td>ntfy</td><td><code>plain</code> / <code>markdown</code></td><td><code>plain</code></td><td>Markdown: yes 头</td></tr>
+            <tr><td><code>console</code></td><td>控制台</td><td><code>plain</code></td><td><code>plain</code></td><td>调试用</td></tr>
+            <tr><td><code>go_cqhttp</code></td><td>go-cqhttp</td><td><code>plain</code></td><td><code>plain</code></td><td>仅支持文本消息</td></tr>
+            <tr><td><code>igot</code></td><td>iGot</td><td><code>plain</code></td><td><code>plain</code></td><td>仅支持文本</td></tr>
+            <tr><td><code>synology_chat</code></td><td>Synology Chat</td><td><code>plain</code></td><td><code>plain</code></td><td>仅支持文本</td></tr>
+            <tr><td><code>qmsg</code></td><td>Qmsg 酱</td><td><code>plain</code></td><td><code>plain</code></td><td>仅支持文本</td></tr>
+            <tr><td><code>aibotk</code></td><td>智能微秘书</td><td><code>plain</code></td><td><code>plain</code></td><td>仅支持文本</td></tr>
+            <tr><td><code>pushme</code></td><td>PushMe</td><td><code>plain</code></td><td><code>plain</code></td><td>仅支持文本</td></tr>
+            <tr><td><code>chronocat</code></td><td>Chronocat</td><td><code>plain</code></td><td><code>plain</code></td><td>仅支持文本</td></tr>
+            <tr><td><code>webhook</code></td><td>自定义 Webhook</td><td><code>plain</code></td><td><code>plain</code></td><td>由调用方自行处理格式</td></tr>
+          </tbody>
+        </table>
+        <p class="note">调用方也可通过 <code>GET /admin/api/channel-types</code> 接口获取每个渠道的 <code>supported_formats</code>、<code>preferred_format</code> 和 <code>extra_schema</code> 字段，用于程序化判断。</p>
+      </div>
+
+      <div class="panel" id="extra-matrix">
+        <h2>渠道内容字段（extra）矩阵</h2>
+        <p class="note"><strong>面向 AI 对接程序的重要说明</strong>：本系统是<strong>个人推送中心</strong>，所有渠道配置的是用户本人的设备/账号。除 <code>email</code> 渠道允许在 <code>target</code> 参数填第三方收件人外，<strong>其他渠道一律只发送给配置的本人设备/账号</strong>。<code>extra</code> 已被白名单限制，不暴露任何收件人/转发字段（Bark 的 <code>device_key</code>、PushPlus 的 <code>to</code>、ntfy 的 <code>email</code> 等均已剥夺），调用方无法通过 <code>extra</code> 改变收件目标。以下矩阵列出了每个渠道支持透传的内容字段，<strong>调用方应据此构造 <code>extra</code>，不要传矩阵以外的字段</strong>（会被忽略）。程序化获取请调 <code>GET /admin/api/channel-types</code>，返回每个渠道的 <code>extra_schema</code>。</p>
+        <p><code>/api/notify</code> 的 <code>extra</code> 参数用于透传渠道特有的内容字段。<strong>key 用渠道原生 API 字段名</strong>（非项目自定义命名），与各渠道原生调用机制一致。渠道配置只保留连接凭证，内容字段全部走 <code>extra</code>。</p>
+        <p class="note">没有列出 extra 字段的渠道（如钉钉、飞书、企业微信、微加机器人、邮件等）不支持 extra 透传，调用方只需传 <code>title</code> / <code>content</code> / <code>content_type</code>。</p>
+
+        <h3>Bark</h3>
+        <pre><code>{"channel_type": "bark", "extra": {"subtitle": "副标题", "group": "分组", "sound": "minuet"}}</code></pre>
+        <table>
+          <thead><tr><th>extra 字段</th><th>类型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>subtitle</code></td><td>string</td><td>副标题</td></tr>
+            <tr><td><code>group</code></td><td>string</td><td>分组</td></tr>
+            <tr><td><code>sound</code></td><td>string</td><td>声音</td></tr>
+            <tr><td><code>icon</code></td><td>string</td><td>图标 URL</td></tr>
+            <tr><td><code>level</code></td><td>string</td><td>时效等级（active/timeSensitive/passive）</td></tr>
+            <tr><td><code>url</code></td><td>string</td><td>点击跳转 URL</td></tr>
+            <tr><td><code>isArchive</code></td><td>boolean</td><td>是否存档</td></tr>
+            <tr><td><code>badge</code></td><td>number</td><td>角标数字</td></tr>
+            <tr><td><code>volume</code></td><td>number</td><td>重要提醒音量 0-10</td></tr>
+            <tr><td><code>autoCopy</code></td><td>boolean</td><td>自动复制</td></tr>
+            <tr><td><code>copy</code></td><td>string</td><td>复制内容</td></tr>
+            <tr><td><code>call</code></td><td>boolean</td><td>重复提醒</td></tr>
+            <tr><td><code>image</code></td><td>string</td><td>图片 URL</td></tr>
+            <tr><td><code>ciphertext</code></td><td>string</td><td>密文（高级）</td></tr>
+            <tr><td><code>action</code></td><td>string</td><td>操作参数（高级）</td></tr>
+            <tr><td><code>id</code></td><td>string</td><td>消息 ID（高级）</td></tr>
+            <tr><td><code>delete</code></td><td>string</td><td>删除消息 ID（高级）</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Gotify</h3>
+        <pre><code>{"channel_type": "gotify", "extra": {"priority": 5}}</code></pre>
+        <table>
+          <thead><tr><th>extra 字段</th><th>类型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>priority</code></td><td>number</td><td>优先级</td></tr>
+            <tr><td><code>extras</code></td><td>object</td><td>extras JSON 对象（高级）</td></tr>
+          </tbody>
+        </table>
+
+        <h3>PushPlus</h3>
+        <pre><code>{"channel_type": "pushplus", "extra": {"channel": "wechat", "topic": "群组编码"}}</code></pre>
+        <table>
+          <thead><tr><th>extra 字段</th><th>类型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>channel</code></td><td>string</td><td>渠道（wechat/webhook/cp/mail 等，默认 wechat）</td></tr>
+            <tr><td><code>topic</code></td><td>string</td><td>群组编码</td></tr>
+            <tr><td><code>webhook</code></td><td>string</td><td>Webhook 编码（高级）</td></tr>
+            <tr><td><code>callbackUrl</code></td><td>string</td><td>回调 URL（高级）</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Telegram Bot</h3>
+        <pre><code>{"channel_type": "telegram_bot", "extra": {"disable_web_page_preview": true, "disable_notification": false}}</code></pre>
+        <table>
+          <thead><tr><th>extra 字段</th><th>类型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>disable_web_page_preview</code></td><td>boolean</td><td>禁用链接预览</td></tr>
+            <tr><td><code>disable_notification</code></td><td>boolean</td><td>静默发送</td></tr>
+            <tr><td><code>protect_content</code></td><td>boolean</td><td>保护内容（高级）</td></tr>
+            <tr><td><code>message_thread_id</code></td><td>number</td><td>话题 ID（高级）</td></tr>
+            <tr><td><code>reply_markup</code></td><td>object</td><td>reply_markup JSON（高级）</td></tr>
+          </tbody>
+        </table>
+
+        <h3>ntfy</h3>
+        <pre><code>{"channel_type": "ntfy", "extra": {"priority": "4", "tags": "warning,server"}}</code></pre>
+        <table>
+          <thead><tr><th>extra 字段</th><th>类型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><code>priority</code></td><td>string</td><td>优先级（1-5，默认 3）</td></tr>
+            <tr><td><code>tags</code></td><td>string</td><td>标签，多个用英文逗号分隔</td></tr>
+            <tr><td><code>click</code></td><td>string</td><td>点击 URL</td></tr>
+            <tr><td><code>attach</code></td><td>string</td><td>附件 URL</td></tr>
+            <tr><td><code>filename</code></td><td>string</td><td>附件文件名</td></tr>
+            <tr><td><code>actions</code></td><td>string</td><td>Actions（高级）</td></tr>
+            <tr><td><code>delay</code></td><td>string</td><td>延迟发送（高级）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>错误码</h2>
+        <table>
+          <thead>
+            <tr><th>状态码</th><th>含义</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>200</code></td><td>投递成功（不论主链/备用/紧急哪个命中）</td></tr>
+            <tr><td><code>401</code></td><td>API Key 缺失或错误</td></tr>
+            <tr><td><code>422</code></td><td>请求体校验失败（必填缺失 / 多传字段 / 类型错误）</td></tr>
+            <tr><td><code>500</code></td><td>服务器内部错误</td></tr>
+          </tbody>
+        </table>
+        <p>注意：<code>success=false</code> 表示所有通道都尝试失败，HTTP 状态仍是 200。判断是否成功请看响应体的 <code>success</code> 字段。</p>
+      </div>
+
+      <div class="panel">
+        <h2>渠道管理</h2>
+        <p>渠道的增删改<strong>只能在 WebUI 进行</strong>，没有对外管理 API。请使用浏览器访问：</p>
+        <pre><code>http://&lt;your-host&gt;:8080/</code></pre>
+        <p>首次访问需输入 API Key 登录，登录后可在「通知配置」页管理渠道。</p>
+      </div>
+
+      <a class="back-link" href="/">← 返回 WebUI</a>
+    </div>
+  </body>
+</html>

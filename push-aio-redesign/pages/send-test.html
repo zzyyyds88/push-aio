@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>发送测试</title>
+    <style id="theme-vars">
+/*
+ * Pinguo design tokens
+ * Brand: Pinguo
+ * Domain: Consumer imaging product
+ * Style: Restrained, elegant, Apple-inspired
+ * Theme mode: light-dark
+ * Source language: zh
+ * Output language: en
+ *
+ * Color architecture (two layers):
+ *   1. Primitive palette - six categories. brand / background / text / icon
+ *      are each a 10-step scale (50 lightest to 900 darkest). state-success and
+ *      state-error are functional colors anchored on Apple system colors.
+ *      Anchors follow Apple Human Interface Guidelines system colors
+ *      (System Blue #007AFF, System Green #34C759, System Red #FF3B30,
+ *      system grays / label / background colors).
+ *   2. Semantic tokens - :root (light) and .dark map roles onto primitives.
+ *      Components and UI kits must only consume the semantic tokens below.
+ */
+
+/* @group-priority: brand, background, text, icon, state-success, state-error */
+
+:root {
+  /* ===== PRIMITIVE PALETTE ===== */
+
+  /* brand */
+  --brand-50: #e8f2ff;
+  --brand-100: #cfe5ff;
+  --brand-200: #9fcbff;
+  --brand-300: #66abff;
+  --brand-400: #2e8dff;
+  --brand-500: #007aff; /* @primary */
+  --brand-600: #0064d6;
+  --brand-700: #004fad;
+  --brand-800: #003b82;
+  --brand-900: #00275a;
+
+  /* background */
+  --background-50: #ffffff;
+  --background-100: #f7f7fa;
+  --background-200: #f2f2f7;
+  --background-300: #e5e5ea;
+  --background-400: #d1d1d6;
+  --background-500: #aeaeb2;
+  --background-600: #8e8e93;
+  --background-700: #3a3a3c;
+  --background-800: #1c1c1e;
+  --background-900: #000000;
+
+  /* text */
+  --text-50: #f5f5f7;
+  --text-100: #e3e3e8;
+  --text-200: #c7c7cc;
+  --text-300: #aeaeb2;
+  --text-400: #8e8e93;
+  --text-500: #6e6e73;
+  --text-600: #48484a;
+  --text-700: #3c3c43;
+  --text-800: #1d1d1f;
+  --text-900: #000000;
+
+  /* icon */
+  --icon-50: #f5f5f7;
+  --icon-100: #e5e5ea;
+  --icon-200: #d1d1d6;
+  --icon-300: #c7c7cc;
+  --icon-400: #aeaeb2;
+  --icon-500: #8e8e93;
+  --icon-600: #6e6e73;
+  --icon-700: #48484a;
+  --icon-800: #2c2c2e;
+  --icon-900: #1d1d1f;
+
+  /* state-success */
+  --state-success: #34c759; /* @primary */
+  --state-success-dark: #30d158;
+  --state-success-surface: #e9f9ee;
+  --state-success-foreground: #ffffff;
+
+  /* state-error */
+  --state-error: #ff3b30; /* @primary */
+  --state-error-dark: #ff453a;
+  --state-error-surface: #ffecea;
+  --state-error-foreground: #ffffff;
+
+  /* ===== SEMANTIC ROLES ===== */
+
+  /* semantic */
+  --background: var(--background-50);
+  --foreground: var(--text-800);
+  --card: var(--background-50);
+  --card-foreground: var(--text-800);
+  --popover: var(--background-50);
+  --popover-foreground: var(--text-900);
+
+  --primary: var(--brand-500);
+  --primary-foreground: var(--background-50);
+  --secondary: var(--background-200);
+  --secondary-foreground: var(--text-800);
+  --muted: var(--background-200);
+  --muted-foreground: var(--text-400);
+  --accent: var(--background-100);
+  --accent-foreground: var(--text-800);
+  --destructive: var(--state-error);
+  --destructive-foreground: var(--state-error-foreground);
+  --success: var(--state-success);
+  --success-foreground: var(--state-success-foreground);
+  --border: var(--background-300);
+  --input: var(--background-400);
+  --ring: var(--brand-500);
+
+  --icon: var(--icon-900);
+  --icon-muted: var(--icon-500);
+
+  /* chart */
+  --chart-1: var(--state-success);
+  --chart-2: var(--brand-500);
+  --chart-3: #ff9500;
+  --chart-4: #5856d6;
+  --chart-5: #af52de;
+
+  /* sidebar */
+  --sidebar: var(--background-200);
+  --sidebar-foreground: var(--text-800);
+  --sidebar-primary: var(--brand-500);
+  --sidebar-primary-foreground: var(--background-50);
+  --sidebar-accent: var(--background-300);
+  --sidebar-accent-foreground: var(--text-800);
+  --sidebar-border: var(--background-300);
+  --sidebar-ring: var(--brand-500);
+
+  /* TYPOGRAPHY */
+  --font-sans: DM Sans, ui-sans-serif, sans-serif, system-ui;
+  --font-serif: DM Sans, ui-sans-serif, sans-serif, system-ui;
+  --font-mono: JetBrains Mono, monospace;
+  --tracking-normal: 0em;
+
+  /* RADIUS */
+  --radius: 1.2rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.2rem;
+
+  /* SHADOWS */
+  --shadow-2xs: 0 1px 2px -1px rgba(0, 0, 0, 0.04); /* Hairline */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04); /* Subtle */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 1px 3px -1px rgba(0, 0, 0, 0.05); /* Card */
+  --shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.05); /* Raised */
+  --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.05); /* Card Hover */
+  --shadow-lg: 0 8px 24px -8px rgba(0, 0, 0, 0.08), 0 4px 8px -4px rgba(0, 0, 0, 0.05); /* Float */
+  --shadow-xl: 0 16px 40px -10px rgba(0, 0, 0, 0.10), 0 8px 16px -8px rgba(0, 0, 0, 0.06); /* Overlay */
+  --shadow-2xl: 0 24px 64px -12px rgba(0, 0, 0, 0.12); /* Modal */
+
+  /* SPACING */
+  --spacing: 0.24rem;
+}
+
+/* ===== SEMANTIC ROLES - dark (primitive palette inherited) ===== */
+.dark {
+  --background: var(--background-900);
+  --foreground: var(--text-50);
+  --card: var(--background-800);
+  --card-foreground: var(--text-50);
+  --popover: var(--background-700);
+  --popover-foreground: var(--text-50);
+
+  --primary: var(--brand-400);
+  --primary-foreground: var(--background-900);
+  --secondary: var(--background-800);
+  --secondary-foreground: var(--text-50);
+  --muted: var(--background-800);
+  --muted-foreground: var(--text-400);
+  --accent: var(--background-700);
+  --accent-foreground: var(--text-50);
+  --destructive: var(--state-error-dark);
+  --destructive-foreground: var(--state-error-foreground);
+  --success: var(--state-success-dark);
+  --success-foreground: var(--state-success-foreground);
+  --border: var(--background-700);
+  --input: var(--background-700);
+  --ring: var(--brand-400);
+
+  --icon: var(--icon-50);
+  --icon-muted: var(--icon-500);
+
+  --chart-1: var(--state-success-dark);
+  --chart-2: var(--brand-400);
+  --chart-3: #ff9f0a;
+  --chart-4: #5e5ce6;
+  --chart-5: #bf5af2;
+
+  --sidebar: var(--background-800);
+  --sidebar-foreground: var(--text-50);
+  --sidebar-primary: var(--brand-400);
+  --sidebar-primary-foreground: var(--background-900);
+  --sidebar-accent: var(--background-700);
+  --sidebar-accent-foreground: var(--text-50);
+  --sidebar-border: var(--background-700);
+  --sidebar-ring: var(--brand-400);
+
+  --shadow-2xs: 0 1px 2px -1px rgba(0, 0, 0, 0.30);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.30);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.36), 0 1px 3px -1px rgba(0, 0, 0, 0.36);
+  --shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.40), 0 1px 2px -1px rgba(0, 0, 0, 0.36);
+  --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.44), 0 2px 4px -2px rgba(0, 0, 0, 0.36);
+  --shadow-lg: 0 8px 24px -8px rgba(0, 0, 0, 0.50), 0 4px 8px -4px rgba(0, 0, 0, 0.40);
+  --shadow-xl: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 8px 16px -8px rgba(0, 0, 0, 0.44);
+  --shadow-2xl: 0 24px 64px -12px rgba(0, 0, 0, 0.60);
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --radius-sm: var(--radius-sm);
+    --radius-md: var(--radius-md);
+    --radius-lg: var(--radius-lg);
+  }
+  @layer base {
+    body { background: var(--background); color: var(--foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--background); }
+      .text-background { color: var(--background); }
+      .border-background { border-color: var(--background); }
+      .ring-background { --tw-ring-color: var(--background); }
+      .bg-foreground { background-color: var(--foreground); }
+      .text-foreground { color: var(--foreground); }
+      .border-foreground { border-color: var(--foreground); }
+      .ring-foreground { --tw-ring-color: var(--foreground); }
+      .bg-card { background-color: var(--card); }
+      .text-card { color: var(--card); }
+      .border-card { border-color: var(--card); }
+      .ring-card { --tw-ring-color: var(--card); }
+      .bg-card-foreground { background-color: var(--card-foreground); }
+      .text-card-foreground { color: var(--card-foreground); }
+      .border-card-foreground { border-color: var(--card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--card-foreground); }
+      .bg-popover { background-color: var(--popover); }
+      .text-popover { color: var(--popover); }
+      .border-popover { border-color: var(--popover); }
+      .ring-popover { --tw-ring-color: var(--popover); }
+      .bg-popover-foreground { background-color: var(--popover-foreground); }
+      .text-popover-foreground { color: var(--popover-foreground); }
+      .border-popover-foreground { border-color: var(--popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--popover-foreground); }
+      .bg-primary { background-color: var(--primary); }
+      .text-primary { color: var(--primary); }
+      .border-primary { border-color: var(--primary); }
+      .ring-primary { --tw-ring-color: var(--primary); }
+      .bg-primary-foreground { background-color: var(--primary-foreground); }
+      .text-primary-foreground { color: var(--primary-foreground); }
+      .border-primary-foreground { border-color: var(--primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--primary-foreground); }
+      .bg-secondary { background-color: var(--secondary); }
+      .text-secondary { color: var(--secondary); }
+      .border-secondary { border-color: var(--secondary); }
+      .ring-secondary { --tw-ring-color: var(--secondary); }
+      .bg-secondary-foreground { background-color: var(--secondary-foreground); }
+      .text-secondary-foreground { color: var(--secondary-foreground); }
+      .border-secondary-foreground { border-color: var(--secondary-foreground); }
+      .ring-secondary-foreground { --tw-ring-color: var(--secondary-foreground); }
+      .bg-muted { background-color: var(--muted); }
+      .text-muted { color: var(--muted); }
+      .border-muted { border-color: var(--muted); }
+      .ring-muted { --tw-ring-color: var(--muted); }
+      .bg-muted-foreground { background-color: var(--muted-foreground); }
+      .text-muted-foreground { color: var(--muted-foreground); }
+      .border-muted-foreground { border-color: var(--muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--muted-foreground); }
+      .bg-accent { background-color: var(--accent); }
+      .text-accent { color: var(--accent); }
+      .border-accent { border-color: var(--accent); }
+      .ring-accent { --tw-ring-color: var(--accent); }
+      .bg-accent-foreground { background-color: var(--accent-foreground); }
+      .text-accent-foreground { color: var(--accent-foreground); }
+      .border-accent-foreground { border-color: var(--accent-foreground); }
+      .ring-accent-foreground { --tw-ring-color: var(--accent-foreground); }
+      .bg-destructive { background-color: var(--destructive); }
+      .text-destructive { color: var(--destructive); }
+      .border-destructive { border-color: var(--destructive); }
+      .ring-destructive { --tw-ring-color: var(--destructive); }
+      .bg-destructive-foreground { background-color: var(--destructive-foreground); }
+      .text-destructive-foreground { color: var(--destructive-foreground); }
+      .border-destructive-foreground { border-color: var(--destructive-foreground); }
+      .ring-destructive-foreground { --tw-ring-color: var(--destructive-foreground); }
+      .bg-border { background-color: var(--border); }
+      .text-border { color: var(--border); }
+      .border-border { border-color: var(--border); }
+      .ring-border { --tw-ring-color: var(--border); }
+      .bg-input { background-color: var(--input); }
+      .text-input { color: var(--input); }
+      .border-input { border-color: var(--input); }
+      .ring-input { --tw-ring-color: var(--input); }
+      .bg-ring { background-color: var(--ring); }
+      .text-ring { color: var(--ring); }
+      .border-ring { border-color: var(--ring); }
+      .ring-ring { --tw-ring-color: var(--ring); }
+      .bg-chart-1 { background-color: var(--chart-1); }
+      .text-chart-1 { color: var(--chart-1); }
+      .border-chart-1 { border-color: var(--chart-1); }
+      .ring-chart-1 { --tw-ring-color: var(--chart-1); }
+      .bg-chart-2 { background-color: var(--chart-2); }
+      .text-chart-2 { color: var(--chart-2); }
+      .border-chart-2 { border-color: var(--chart-2); }
+      .ring-chart-2 { --tw-ring-color: var(--chart-2); }
+      .bg-chart-3 { background-color: var(--chart-3); }
+      .text-chart-3 { color: var(--chart-3); }
+      .border-chart-3 { border-color: var(--chart-3); }
+      .ring-chart-3 { --tw-ring-color: var(--chart-3); }
+      .bg-chart-4 { background-color: var(--chart-4); }
+      .text-chart-4 { color: var(--chart-4); }
+      .border-chart-4 { border-color: var(--chart-4); }
+      .ring-chart-4 { --tw-ring-color: var(--chart-4); }
+      .bg-chart-5 { background-color: var(--chart-5); }
+      .text-chart-5 { color: var(--chart-5); }
+      .border-chart-5 { border-color: var(--chart-5); }
+      .ring-chart-5 { --tw-ring-color: var(--chart-5); }
+      .bg-sidebar { background-color: var(--sidebar); }
+      .text-sidebar { color: var(--sidebar); }
+      .border-sidebar { border-color: var(--sidebar); }
+      .ring-sidebar { --tw-ring-color: var(--sidebar); }
+      .bg-sidebar-foreground { background-color: var(--sidebar-foreground); }
+      .text-sidebar-foreground { color: var(--sidebar-foreground); }
+      .border-sidebar-foreground { border-color: var(--sidebar-foreground); }
+      .ring-sidebar-foreground { --tw-ring-color: var(--sidebar-foreground); }
+      .bg-sidebar-primary { background-color: var(--sidebar-primary); }
+      .text-sidebar-primary { color: var(--sidebar-primary); }
+      .border-sidebar-primary { border-color: var(--sidebar-primary); }
+      .ring-sidebar-primary { --tw-ring-color: var(--sidebar-primary); }
+      .bg-sidebar-primary-foreground { background-color: var(--sidebar-primary-foreground); }
+      .text-sidebar-primary-foreground { color: var(--sidebar-primary-foreground); }
+      .border-sidebar-primary-foreground { border-color: var(--sidebar-primary-foreground); }
+      .ring-sidebar-primary-foreground { --tw-ring-color: var(--sidebar-primary-foreground); }
+      .bg-sidebar-accent { background-color: var(--sidebar-accent); }
+      .text-sidebar-accent { color: var(--sidebar-accent); }
+      .border-sidebar-accent { border-color: var(--sidebar-accent); }
+      .ring-sidebar-accent { --tw-ring-color: var(--sidebar-accent); }
+      .bg-sidebar-accent-foreground { background-color: var(--sidebar-accent-foreground); }
+      .text-sidebar-accent-foreground { color: var(--sidebar-accent-foreground); }
+      .border-sidebar-accent-foreground { border-color: var(--sidebar-accent-foreground); }
+      .ring-sidebar-accent-foreground { --tw-ring-color: var(--sidebar-accent-foreground); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <main>
+      <div class="flex min-h-screen bg-background">
+
+        <!-- Sidebar drawer toggle (CSS-only, no JS) -->
+        <input type="checkbox" id="sidebar-toggle" class="peer hidden">
+
+        <!-- Mobile overlay -->
+        <label for="sidebar-toggle" class="fixed inset-0 z-40 bg-black/30 lg:hidden opacity-0 pointer-events-none peer-checked:opacity-100 peer-checked:pointer-events-auto transition-opacity duration-300"></label>
+
+        <!-- Sidebar -->
+        <aside class="fixed lg:sticky top-0 left-0 z-50 w-60 h-screen bg-sidebar border-r border-sidebar-border flex flex-col -translate-x-full lg:translate-x-0 peer-checked:translate-x-0 transition-transform duration-300 ease-out">
+
+          <!-- Brand area -->
+          <div class="h-14 flex items-center px-5 border-b border-sidebar-border shrink-0">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+                <i data-lucide="bell" class="w-4 h-4 text-primary-foreground"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold text-sidebar-foreground leading-tight">push-aio</div>
+                <div class="text-xs text-muted-foreground leading-tight">统一推送</div>
+              </div>
+            </div>
+            <!-- Close button (mobile only) -->
+            <label for="sidebar-toggle" class="lg:hidden ml-auto p-1.5 rounded-md hover:bg-sidebar-accent cursor-pointer transition-colors">
+              <i data-lucide="x" class="w-4 h-4 text-sidebar-foreground"></i>
+            </label>
+          </div>
+
+          <!-- Navigation -->
+          <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
+            <a href="#" data-dom-id="nav-overview" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
+              <i data-lucide="house" class="w-4 h-4 shrink-0"></i>
+              <span>概览</span>
+            </a>
+            <a href="#" data-dom-id="nav-channels" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
+              <i data-lucide="mail" class="w-4 h-4 shrink-0"></i>
+              <span>渠道管理</span>
+            </a>
+            <a href="#" data-dom-id="nav-send-test" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium bg-sidebar-primary text-sidebar-primary-foreground">
+              <i data-lucide="send-horizontal" class="w-4 h-4 shrink-0"></i>
+              <span>发送测试</span>
+            </a>
+            <a href="#" data-dom-id="nav-settings" class="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
+              <i data-lucide="user" class="w-4 h-4 shrink-0"></i>
+              <span>设置</span>
+            </a>
+          </nav>
+
+          <!-- Bottom: logout -->
+          <div class="p-3 border-t border-sidebar-border shrink-0">
+            <button class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors">
+              <i data-lucide="log-out" class="w-4 h-4 shrink-0"></i>
+              <span>退出登录</span>
+            </button>
+          </div>
+        </aside>
+
+        <!-- Main content area -->
+        <div class="flex-1 flex flex-col min-w-0">
+
+          <!-- Top bar -->
+          <header class="h-14 bg-card/80 backdrop-blur-md border-b border-border flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
+            <div class="flex items-center gap-3">
+              <label for="sidebar-toggle" class="lg:hidden p-2 -ml-2 rounded-md hover:bg-accent cursor-pointer transition-colors">
+                <i data-lucide="menu" class="w-5 h-5 text-foreground"></i>
+              </label>
+              <h1 class="text-base font-semibold text-foreground">发送测试</h1>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full" style="background-color: var(--success);"></span>
+              <span class="text-sm text-muted-foreground">在线</span>
+            </div>
+          </header>
+
+          <!-- Page content -->
+          <div class="flex-1 p-4 lg:p-6">
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-5 lg:gap-6 max-w-7xl mx-auto">
+
+              <!-- Left column: Send form (~40%) -->
+              <section class="lg:col-span-2">
+                <div class="bg-card rounded-md border border-border shadow-sm p-5 lg:p-6">
+                  <div class="mb-5">
+                    <h2 class="text-lg font-semibold text-foreground">发送测试</h2>
+                    <p class="text-sm text-muted-foreground mt-0.5">验证推送链路是否正常</p>
+                  </div>
+
+                  <form class="space-y-4">
+                    <!-- Title -->
+                    <div>
+                      <label class="block text-sm font-medium text-foreground mb-1.5">标题</label>
+                      <input type="text" placeholder="输入推送标题" class="w-full px-3 py-2 text-sm rounded-sm border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow">
+                    </div>
+
+                    <!-- Content -->
+                    <div>
+                      <label class="block text-sm font-medium text-foreground mb-1.5">内容</label>
+                      <textarea rows="4" placeholder="输入推送内容" class="w-full px-3 py-2 text-sm rounded-sm border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow resize-none"></textarea>
+                    </div>
+
+                    <!-- Content format -->
+                    <div>
+                      <label class="block text-sm font-medium text-foreground mb-1.5">内容格式</label>
+                      <select class="w-full px-3 py-2 text-sm rounded-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow">
+                        <option>纯文本</option>
+                        <option>Markdown</option>
+                        <option>HTML</option>
+                      </select>
+                    </div>
+
+                    <!-- Channel type (optional) -->
+                    <div>
+                      <label class="block text-sm font-medium text-foreground mb-1.5">
+                        渠道类型
+                        <span class="text-muted-foreground font-normal">（选填）</span>
+                      </label>
+                      <select class="w-full px-3 py-2 text-sm rounded-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow">
+                        <option value="">留空则自动选择第一个可用类型</option>
+                        <option>Bark</option>
+                        <option>钉钉机器人</option>
+                        <option>Telegram</option>
+                        <option>邮件</option>
+                      </select>
+                    </div>
+
+                    <!-- Dispatch note -->
+                    <div class="rounded-sm bg-accent px-3 py-2.5">
+                      <p class="text-xs text-muted-foreground leading-relaxed">
+                        指定渠道类型后，系统在该类型的启用渠道里按优先级逐个尝试（同类型备用），全失败再升级到全局紧急通道组（并发发送）。
+                      </p>
+                    </div>
+
+                    <!-- Send button -->
+                    <button type="button" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-sm hover:opacity-90 transition-opacity">
+                      <i data-lucide="send-horizontal" class="w-4 h-4"></i>
+                      <span>发送</span>
+                    </button>
+                  </form>
+                </div>
+              </section>
+
+              <!-- Right column: Delivery result (~60%) -->
+              <section class="lg:col-span-3">
+                <div class="bg-card rounded-md border border-border shadow-sm p-5 lg:p-6">
+                  <div class="mb-5">
+                    <h2 class="text-lg font-semibold text-foreground">投递结果</h2>
+                  </div>
+
+                  <!-- Success banner -->
+                  <div class="rounded-md p-4 mb-4 flex items-start gap-3" style="background-color: var(--state-success-surface); border: 1px solid var(--state-success);">
+                    <i data-lucide="check-circle" class="w-5 h-5 shrink-0 mt-0.5" style="color: var(--state-success);"></i>
+                    <p class="text-sm leading-relaxed text-foreground">
+                      <span class="font-semibold" style="color: var(--state-success);">投递成功</span>
+                      <span class="text-muted-foreground"> · 经备用通道「备用 Bark」投递（共尝试 2 个渠道，请求 ID：abc123）</span>
+                    </p>
+                  </div>
+
+                  <!-- Upgrade warning banner -->
+                  <div class="rounded-md p-4 mb-5 flex items-start gap-3" style="background-color: rgba(255, 149, 0, 0.08); border: 1px solid var(--chart-3);">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 shrink-0 mt-0.5" style="color: var(--chart-3);"></i>
+                    <p class="text-sm leading-relaxed text-foreground">
+                      <span class="font-semibold" style="color: var(--chart-3);">主通道组全部失败</span>
+                      <span class="text-muted-foreground"> · 已升级到紧急通道组（并发发送所有紧急渠道）</span>
+                    </p>
+                  </div>
+
+                  <!-- Dispatch chain visualization -->
+                  <div class="space-y-6">
+
+                    <!-- Main channel link (sequential) -->
+                    <div>
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">主通道链路</span>
+                        <span class="text-xs text-muted-foreground">逐个尝试</span>
+                      </div>
+                      <div class="flex flex-col sm:flex-row items-stretch gap-3">
+
+                        <!-- Step 1: Primary channel - failed -->
+                        <div class="w-full sm:flex-1 rounded-sm border p-3.5" style="background-color: var(--state-error-surface); border-color: var(--state-error);">
+                          <div class="flex items-center justify-between mb-2.5">
+                            <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded" style="background-color: var(--brand-50); color: var(--brand-600);">
+                              <i data-lucide="shield" class="w-3 h-3"></i>
+                              主
+                            </span>
+                            <i data-lucide="x" class="w-4 h-4" style="color: var(--state-error);"></i>
+                          </div>
+                          <div class="text-sm font-medium text-foreground mb-2">我的 Bark</div>
+                          <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded" style="background-color: var(--state-error); color: var(--state-error-foreground);">
+                            限流
+                          </span>
+                        </div>
+
+                        <!-- Arrow (rotates on mobile) -->
+                        <div class="flex items-center justify-center shrink-0 text-muted-foreground">
+                          <i data-lucide="chevron-right" class="w-5 h-5 rotate-90 sm:rotate-0"></i>
+                        </div>
+
+                        <!-- Step 2: Backup channel - success -->
+                        <div class="w-full sm:flex-1 rounded-sm border p-3.5" style="background-color: var(--state-success-surface); border-color: var(--state-success);">
+                          <div class="flex items-center justify-between mb-2.5">
+                            <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded" style="background-color: rgba(255, 149, 0, 0.12); color: var(--chart-3);">
+                              <i data-lucide="layers" class="w-3 h-3"></i>
+                              备用
+                            </span>
+                            <i data-lucide="check" class="w-4 h-4" style="color: var(--state-success);"></i>
+                          </div>
+                          <div class="text-sm font-medium text-foreground">备用 Bark</div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    <!-- Emergency channel group (concurrent) -->
+                    <div>
+                      <div class="flex items-center gap-2 mb-3">
+                        <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">紧急通道组</span>
+                        <span class="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded" style="background-color: var(--state-error-surface); color: var(--state-error);">
+                          <i data-lucide="zap" class="w-3 h-3"></i>
+                          并发发送
+                        </span>
+                      </div>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                        <!-- Emergency email - success -->
+                        <div class="rounded-sm border p-3.5" style="background-color: var(--state-success-surface); border-color: var(--state-success);">
+                          <div class="flex items-center justify-between mb-2.5">
+                            <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded" style="background-color: var(--state-error-surface); color: var(--state-error);">
+                              <i data-lucide="zap" class="w-3 h-3"></i>
+                              紧急
+                            </span>
+                            <i data-lucide="check" class="w-4 h-4" style="color: var(--state-success);"></i>
+                          </div>
+                          <div class="text-sm font-medium text-foreground">紧急邮件</div>
+                        </div>
+
+                        <!-- Emergency Telegram - success -->
+                        <div class="rounded-sm border p-3.5" style="background-color: var(--state-success-surface); border-color: var(--state-success);">
+                          <div class="flex items-center justify-between mb-2.5">
+                            <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded" style="background-color: var(--state-error-surface); color: var(--state-error);">
+                              <i data-lucide="zap" class="w-3 h-3"></i>
+                              紧急
+                            </span>
+                            <i data-lucide="check" class="w-4 h-4" style="color: var(--state-success);"></i>
+                          </div>
+                          <div class="text-sm font-medium text-foreground">紧急 Telegram</div>
+                        </div>
+
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <!-- Last detail -->
+                  <div class="mt-6 pt-4 border-t border-border">
+                    <p class="text-xs text-muted-foreground">最后详情：投递成功，消息已送达</p>
+                  </div>
+
+                </div>
+              </section>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

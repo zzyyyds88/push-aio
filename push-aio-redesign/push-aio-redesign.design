@@ -1,0 +1,152 @@
+{
+  "data": [
+    {
+      "id": "page-overview",
+      "title": "概览",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785043187000,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/overview.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-channels",
+            "targetPageId": "page-channels"
+          },
+          {
+            "domId": "nav-send-test",
+            "targetPageId": "page-send-test"
+          },
+          {
+            "domId": "nav-settings",
+            "targetPageId": "page-settings"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-channels",
+      "title": "渠道管理",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785043187000,
+      "canvasData": {
+        "x": 620,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/channels.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview"
+          },
+          {
+            "domId": "nav-channels",
+            "targetPageId": "page-channels",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-send-test",
+            "targetPageId": "page-send-test"
+          },
+          {
+            "domId": "nav-settings",
+            "targetPageId": "page-settings"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-send-test",
+      "title": "发送测试",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785043187000,
+      "canvasData": {
+        "x": 620,
+        "y": 484,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/send-test.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview"
+          },
+          {
+            "domId": "nav-channels",
+            "targetPageId": "page-channels"
+          },
+          {
+            "domId": "nav-send-test",
+            "targetPageId": "page-send-test",
+            "hideEdge": true
+          },
+          {
+            "domId": "nav-settings",
+            "targetPageId": "page-settings"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-settings",
+      "title": "设置",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1785043187000,
+      "canvasData": {
+        "x": 620,
+        "y": 861,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings.html",
+        "interactions": [
+          {
+            "domId": "nav-overview",
+            "targetPageId": "page-overview"
+          },
+          {
+            "domId": "nav-channels",
+            "targetPageId": "page-channels"
+          },
+          {
+            "domId": "nav-send-test",
+            "targetPageId": "page-send-test"
+          },
+          {
+            "domId": "nav-settings",
+            "targetPageId": "page-settings",
+            "hideEdge": true
+          }
+        ]
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "desktop",
+    "designLibrary": {
+      "name": "苹果",
+      "id": "dl_builtin_apple",
+      "version": null,
+      "scope": "builtin",
+      "path": "c:\\Users\\13952\\.trae-cn\\design_libraries\\dl_builtin_apple",
+      "versionSource": "builtin"
+    }
+  }
+}

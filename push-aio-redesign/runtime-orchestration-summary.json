@@ -1,0 +1,94 @@
+{
+  "skillProvenance": {
+    "name": "solo-design",
+    "version": "2026.07.24.0",
+    "version_source": "builtin"
+  },
+  "project": {
+    "resolvedLane": "free_exploration",
+    "selectedIntentWorkflowRead": true,
+    "contextRequirementsLoaded": [
+      {
+        "path": "intent-workflows/intent-page-free-exploration/INTENT_WORKFLOW.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      },
+      {
+        "path": "shared-runtime/agent-dispatch-runtime/shared-page-rendering-kernel.md",
+        "readStatus": "loaded",
+        "bodyRead": true
+      }
+    ],
+    "contextReadScope": "free-exploration-lane-only",
+    "validationRunDiscipline": "main-agent-owned",
+    "lowValueCallWatchdog": {
+      "noProgressNextAction": "proceed-to-readiness"
+    },
+    "deviceType": "desktop",
+    "sharedProjectShellContract": {
+      "sidebarNavigation": true,
+      "topbarStatus": true,
+      "mobileDrawerSidebar": true
+    }
+  },
+  "designSource": {
+    "operatingMode": "free-exploration",
+    "libraryIdentity": {
+      "name": "苹果",
+      "id": "dl_builtin_apple",
+      "scope": "builtin",
+      "path": "c:\\Users\\13952\\.trae-cn\\design_libraries\\dl_builtin_apple",
+      "versionSource": "builtin"
+    },
+    "styleDirection": "restrained-apple-inspired",
+    "visualNorthStar": "Apple Human Interface Guidelines — clean, spacious, hairline borders, system colors",
+    "compositionPattern": "sidebar + topbar shell, content panels with card lists",
+    "continuityAnchors": [
+      "240px sidebar with 4 nav items (概览/渠道管理/发送测试/设置)",
+      "56px topbar with page title + status indicator",
+      "Apple system color tokens (brand-500 #007AFF, state-success #34C759, state-error #FF3B30)"
+    ]
+  },
+  "expectedDispatches": [
+    {
+      "pageId": "page-overview",
+      "title": "概览",
+      "htmlSrc": "pages/overview.html",
+      "status": "completed",
+      "changedFiles": ["pages/overview.html"]
+    },
+    {
+      "pageId": "page-channels",
+      "title": "渠道管理",
+      "htmlSrc": "pages/channels.html",
+      "status": "completed",
+      "changedFiles": ["pages/channels.html"]
+    },
+    {
+      "pageId": "page-send-test",
+      "title": "发送测试",
+      "htmlSrc": "pages/send-test.html",
+      "status": "completed",
+      "changedFiles": ["pages/send-test.html"]
+    },
+    {
+      "pageId": "page-settings",
+      "title": "设置",
+      "htmlSrc": "pages/settings.html",
+      "status": "completed",
+      "changedFiles": ["pages/settings.html"]
+    }
+  ],
+  "mainAgentPostDispatchMutations": [
+    {
+      "action": "add-data-dom-id-attributes",
+      "reason": "Register navigation interactions for canvas preview edges",
+      "files": ["pages/overview.html", "pages/channels.html", "pages/send-test.html", "pages/settings.html"]
+    },
+    {
+      "action": "write-design-file",
+      "reason": "Register 4 page nodes with navigation interactions",
+      "files": ["push-aio-redesign.design"]
+    }
+  ]
+}
