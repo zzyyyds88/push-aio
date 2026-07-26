@@ -591,6 +591,67 @@ function renderNotifyResult(result) {
 function renderSettingsPage() {
   const masked = maskKey(getApiKey());
   document.getElementById("settings-key-masked").textContent = masked;
+  // 重置错误提示
+  const err = document.getElementById("change-key-error");
+  err.style.display = "none";
+  err.textContent = "";
+  const form = document.getElementById("change-key-form");
+  if (form) form.reset();
+}
+
+async function handleChangeKey(event) {
+  event.preventDefault();
+  const formData = new FormData(event.currentTarget);
+  const newKey = formData.get("new_key");
+  const confirmKey = formData.get("confirm_key");
+  const err = document.getElementById("change-key-error");
+
+  if (newKey !== confirmKey) {
+    err.textContent = "两次输入的新 Key 不一致";
+    err.style.display = "flex";
+    return;
+  }
+  if (newKey.length < 12) {
+    err.textContent = "新 Key 至少 12 位";
+    err.style.display = "flex";
+    return;
+  }
+
+  try {
+    await api("/admin/api/auth/change-key", {
+      method: "POST",
+      body: JSON.stringify({ new_key: newKey }),
+    });
+    toast("Key 已更新，请用新 Key 重新登录");
+    // 用新 Key 更新本地存储，避免立即跳登录后还在用旧 Key
+    setApiKey(newKey);
+    event.currentTarget.reset();
+    // 短暂延迟后跳登录页（强制重新输入，确认新 Key 已记住）
+    setTimeout(() => {
+      setApiKey("");
+      showLogin();
+    }, 1200);
+  } catch (e) {
+    err.textContent = `修改失败：${e.message}`;
+    err.style.display = "flex";
+  }
+}
+
+/* ============ 移动端侧边栏抽屉 ============ */
+function openSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  sidebar.classList.add("open");
+  overlay.classList.add("show");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function closeSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  sidebar.classList.remove("open");
+  overlay.classList.remove("show");
+  overlay.setAttribute("aria-hidden", "true");
 }
 
 /* ============ 数据加载 ============ */
@@ -637,10 +698,19 @@ document.addEventListener("DOMContentLoaded", () => {
     setApiKey("");
     showLogin();
   });
-  document.querySelectorAll(".nav-item").forEach((item) => {
+  document.getElementById("change-key-form").addEventListener("submit", handleChangeKey);
+
+  // 移动端侧边栏抽屉
+  document.getElementById("sidebar-toggle").addEventListener("click", openSidebar);
+  document.getElementById("sidebar-close").addEventListener("click", closeSidebar);
+  document.getElementById("sidebar-overlay").addEventListener("click", closeSidebar);
+
+  document.querySelectorAll(".nav-item[data-route]").forEach((item) => {
     item.addEventListener("click", (e) => {
       e.preventDefault();
       navigate(item.dataset.route);
+      // 移动端点击后自动收起侧边栏
+      if (window.innerWidth <= 768) closeSidebar();
     });
   });
   // 通知配置页的测试发送表单

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.db import get_db
-from ..core.security import RequireApiKey
+from ..core.security import RequireApiKey, set_api_key
 from ..models import Channel, DeliveryLog
 from ..schemas import (
     AdminNotifyRequest,
     BackupGroupUpdate,
+    ChangeKeyRequest,
     ChannelCreate,
     ChannelMeta,
     ChannelOut,
@@ -24,7 +28,7 @@ from ..schemas import (
 from ..services.channels import registry
 from ..services.dispatcher import dispatch, dispatch_single
 
-# 公开接口：健康检查（无需鉴权，供监控探活）
+# 公开接口：健康检查 + 调用说明页（无需鉴权）
 public_router = APIRouter(prefix="/api")
 
 # 外部调用接口：推送通知（需 X-API-Key）
@@ -33,6 +37,9 @@ notify_router = APIRouter(prefix="/api", dependencies=[RequireApiKey])
 
 # 管理接口：WebUI 专用（需 X-API-Key），包含渠道 CRUD、日志、状态、测试发送
 admin_router = APIRouter(prefix="/admin/api", dependencies=[RequireApiKey])
+
+# 静态资源目录
+STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
 
 
 def _serialize_channel(channel: Channel) -> ChannelOut:
@@ -79,6 +86,12 @@ def health():
     return {"ok": True}
 
 
+@public_router.get("/help", include_in_schema=False)
+def api_help():
+    """外部调用说明页（公开，无需鉴权）。"""
+    return FileResponse(STATIC_DIR / "help.html")
+
+
 # ==================== 外部调用接口 ====================
 
 @notify_router.post("/notify", response_model=NotifyResponse)
@@ -97,6 +110,16 @@ def notify(payload: NotifyRequest, db: Session = Depends(get_db)):
 def auth_verify():
     """前端登录校验：带 X-API-Key 通过依赖即返回 200，否则 401。"""
     return {"ok": True}
+
+
+@admin_router.post("/auth/change-key")
+def change_key(payload: ChangeKeyRequest):
+    """修改 API Key（同步写回 .env，立即生效）。
+
+    需要当前 Key 鉴权；修改后浏览器需要更新 localStorage 中的 Key。
+    """
+    set_api_key(payload.new_key)
+    return {"ok": True, "hint": "Key 已更新，请在前端重新登录"}
 
 
 @admin_router.get("/channel-types", response_model=list[ChannelMeta])

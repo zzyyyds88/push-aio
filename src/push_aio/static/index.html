@@ -29,10 +29,14 @@
 
     <!-- 主应用 -->
     <div id="app-view" class="app-view" hidden>
-      <aside class="sidebar glass">
+      <!-- 移动端遮罩 -->
+      <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+
+      <aside class="sidebar glass" id="sidebar">
         <div class="brand">
           <p class="eyebrow">push-aio</p>
           <span class="brand-sub">统一推送</span>
+          <button type="button" id="sidebar-close" class="sidebar-close" aria-label="收起菜单">×</button>
         </div>
         <nav class="nav">
           <a href="#/dashboard" class="nav-item" data-route="dashboard">
@@ -47,6 +51,10 @@
             <span class="nav-icon" aria-hidden="true">⚙</span>
             <span>系统设置</span>
           </a>
+          <a href="/api/help" target="_blank" class="nav-item">
+            <span class="nav-icon" aria-hidden="true">?</span>
+            <span>调用说明</span>
+          </a>
         </nav>
         <div class="sidebar-foot">
           <button type="button" id="logout-btn" class="secondary">退出登录</button>
@@ -55,6 +63,7 @@
 
       <main class="main">
         <header class="topbar glass">
+          <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="打开菜单">☰</button>
           <h2 id="page-title">看板</h2>
           <div class="topbar-actions">
             <span id="conn-status" class="status-pill"><span class="status-dot"></span>在线</span>
@@ -156,16 +165,31 @@
         <section id="page-settings" class="page-content" hidden>
           <section class="panel glass">
             <div class="panel-head">
-              <h2>API Key</h2>
-              <span class="hint">WebUI 登录与外部调用共用同一把 Key</span>
+              <h2>修改 API Key（密码）</h2>
+              <span class="hint">WebUI 登录密码与外部调用 Key 是同一把</span>
             </div>
             <div class="kv">
               <span class="kv-k">当前 Key（仅显示前 4 位与后 4 位）</span>
               <code id="settings-key-masked">****</code>
             </div>
-            <div class="kv">
-              <span class="kv-k">来源</span>
-              <span class="meta">服务器 .env 文件中的 PUSH_AIO_API_KEY</span>
+            <form id="change-key-form" class="form">
+              <label>
+                <span>新 Key（至少 12 位）</span>
+                <input name="new_key" type="password" required minlength="12" maxlength="256" placeholder="输入新 Key" autocomplete="new-password" />
+              </label>
+              <label>
+                <span>确认新 Key</span>
+                <input name="confirm_key" type="password" required minlength="12" maxlength="256" placeholder="再次输入新 Key" autocomplete="new-password" />
+              </label>
+              <button type="submit">保存新 Key</button>
+              <p id="change-key-error" class="banner bad" style="display:none;"></p>
+              <p class="meta">修改后立即生效，写回服务器 .env。当前浏览器需用新 Key 重新登录。</p>
+            </form>
+          </section>
+
+          <section class="panel glass">
+            <div class="panel-head">
+              <h2>会话</h2>
             </div>
             <div class="row">
               <button type="button" id="reset-key-btn" class="secondary">清除浏览器 Key 并重新登录</button>
@@ -175,7 +199,7 @@
           <section class="panel glass">
             <div class="panel-head">
               <h2>外部调用示例</h2>
-              <span class="hint">外部程序通过此接口投递通知</span>
+              <span class="hint">完整说明见 <a href="/api/help" target="_blank">/api/help</a></span>
             </div>
             <p class="meta">接口：<code>POST /api/notify</code>，请求头需携带 <code>X-API-Key</code>。请求体严格模式，多传字段会被拒绝。</p>
             <pre class="code-block">curl -X POST http://&lt;your-host&gt;:8080/api/notify \

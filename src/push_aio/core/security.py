@@ -11,9 +11,10 @@ from fastapi import Depends, HTTPException, Request
 
 # 项目根目录：src/push_aio/core/security.py → parents[3]
 BASE_DIR = Path(__file__).resolve().parents[3]
+ENV_PATH = BASE_DIR / ".env"
 
 # 启动时加载 .env（已 gitignore，不入仓库）
-load_dotenv(BASE_DIR / ".env")
+load_dotenv(ENV_PATH)
 
 # 全局单一 API Key（个人推送中心，无需多 Key）
 # 优先读环境变量 PUSH_AIO_API_KEY；未设置则启动失败，避免裸奔。
@@ -48,6 +49,36 @@ def verify_api_key(request: Request) -> None:
             status_code=401,
             detail="无效或缺失的 API Key。请在请求头携带 X-API-Key。",
         )
+
+
+def set_api_key(new_key: str) -> None:
+    """运行时修改 API Key：同步写回 .env 并更新内存中的 _API_KEY。
+
+    修改后立即生效，无需重启服务。下次启动时由 .env 加载。
+    """
+    global _API_KEY
+    if not new_key or new_key == "change-me-to-a-random-string":
+        raise HTTPException(status_code=400, detail="新 Key 不能为空或占位符")
+    if len(new_key) < 12:
+        raise HTTPException(status_code=400, detail="新 Key 至少 12 位，保证强度")
+
+    # 写回 .env：保留其他行，只替换 PUSH_AIO_API_KEY
+    lines: list[str] = []
+    found = False
+    if ENV_PATH.exists():
+        for raw in ENV_PATH.read_text(encoding="utf-8").splitlines():
+            if raw.startswith("PUSH_AIO_API_KEY="):
+                lines.append(f"PUSH_AIO_API_KEY={new_key}")
+                found = True
+            else:
+                lines.append(raw)
+    if not found:
+        lines.append(f"PUSH_AIO_API_KEY={new_key}")
+    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # 同步更新运行时
+    _API_KEY = new_key
+    os.environ["PUSH_AIO_API_KEY"] = new_key
 
 
 # 所有需要鉴权的接口共享这个依赖

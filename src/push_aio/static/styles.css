@@ -772,6 +772,60 @@ details.advanced > .form {
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* ============ 移动端侧边栏抽屉 ============ */
+.sidebar-toggle {
+  display: none;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+}
+
+.sidebar-toggle:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: none;
+}
+
+.sidebar-close {
+  display: none;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 40;
+}
+
+.sidebar-overlay.show {
+  display: block;
+}
+
 /* ============ 响应式 ============ */
 @media (max-width: 1100px) {
   .channels-grid { grid-template-columns: 1fr; }
@@ -781,18 +835,105 @@ details.advanced > .form {
 
 @media (max-width: 768px) {
   .app-view { grid-template-columns: 1fr; }
+
+  /* 侧边栏改为抽屉 */
   .sidebar {
-    position: relative;
-    height: auto;
-    flex-direction: row;
-    padding: 14px;
-    gap: 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: var(--sidebar-w);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    border-right: 1px solid var(--glass-border);
   }
-  .brand { padding: 0; }
-  .nav { flex-direction: row; flex-wrap: wrap; }
-  .nav-item { padding: 8px 12px; }
-  .sidebar-foot { padding: 0; }
-  .sidebar-foot button { width: auto; }
-  .main { padding: 16px; }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sidebar-toggle {
+    display: inline-flex;
+  }
+
+  .topbar {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+  .topbar h2 {
+    flex: 1;
+    font-size: 16px;
+  }
+  .topbar-actions .status-pill {
+    display: none; /* 移动端隐藏状态标签，节省空间 */
+  }
+
+  .main {
+    padding: 14px;
+  }
+
+  .dashboard-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-card { padding: 14px 16px; }
+  .stat-card .num { font-size: 1.5rem; }
+
+  .panel { padding: 16px; }
+  .panel-head h2 { font-size: 14px; }
+  .panel-head .hint { display: none; }
+
+  /* 表单触摸友好 */
+  input, select, textarea {
+    padding: 12px 14px;
+    font-size: 16px; /* iOS 防止缩放 */
+  }
+  button {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+  .check input { width: 20px; height: 20px; }
+
+  /* 渠道卡片操作按钮：移动端铺满 */
+  .card .row {
+    gap: 8px;
+  }
+  .card .row button {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+
+  .code-block {
+    font-size: 11px;
+    padding: 12px;
+  }
+
+  .modal {
+    width: 100%;
+    padding: 18px;
+  }
+  .modal .check-list {
+    max-height: 50vh;
+  }
+
+  .toast-root {
+    bottom: 16px;
+    right: 16px;
+    left: 16px;
+  }
+  .toast {
+    max-width: none;
+  }
+}
+
+@media (max-width: 420px) {
   .dashboard-grid { grid-template-columns: 1fr; }
+  .stat-card { padding: 12px 14px; }
+  .stat-card .num { font-size: 1.4rem; }
+  .card .row button {
+    flex: 1 1 100%;
+  }
 }

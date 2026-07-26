@@ -125,6 +125,14 @@ class NotifyRequest(BaseModel):
     attachments: list[NotifyAttachment] | None = None
 
 
+class ChangeKeyRequest(BaseModel):
+    """修改 API Key 的请求体。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    new_key: str = Field(..., min_length=12, max_length=256, description="新 Key，至少 12 位")
+
+
 class AdminNotifyRequest(BaseModel):
     """WebUI 测试发送的请求体。
 
