@@ -44,8 +44,11 @@ pushhub/
 ├── docs/
 │   ├── channel-docs/              # 12 份渠道官方文档本地化（能力声明依据）
 │   └── ERROR_CODES.md             # 错误码说明
-├── data/                          # 运行时数据（已 .gitignore）
+├── data/                          # 运行时数据（已 .gitignore，Docker 卷映射持久化）
 │   └── pushhub.db                # SQLite 数据库（含 channels / delivery_logs / settings）
+├── Dockerfile                     # 容器镜像构建（python:3.11-slim + 国内源）
+├── docker-compose.yml             # 容器编排（端口 8080 + ./data 卷映射）
+├── .dockerignore                  # Docker 构建排除规则
 ├── API_CALLING.md                 # 外部调用说明（与 /api/help 页同步）
 └── pyproject.toml
 ```
@@ -59,6 +62,66 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e . -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
+
+## Docker 部署（推荐）
+
+镜像基于 `python:3.11-slim`，已配置国内源（pip 走清华源、Debian apt 走中科大源），数据通过 `./data/` 目录持久化，容器重建不丢失。
+
+### 获取镜像（二选一）
+
+**方式 A：下载预构建镜像（不会自己构建可选）**
+
+从夸克网盘下载 `pushhub-latest.tar`：https://pan.quark.cn/s/fe9835460e66
+
+下载后加载到本地 Docker：
+
+```powershell
+docker load -i pushhub-latest.tar
+```
+
+**方式 B：自行构建**
+
+```powershell
+docker build -t pushhub:latest .
+```
+
+> 仅首次或依赖、Dockerfile 变更时需要构建。`docker-compose.yml` 只负责运行，不在 `up` 时自动构建。
+
+### 启动服务
+
+```powershell
+docker compose up -d
+```
+
+启动后访问 `http://<your-host>:8080/` 完成 API Key 初始化设置。
+
+### 常用命令
+
+```powershell
+# 查看实时日志
+docker compose logs -f
+
+# 停止服务
+docker compose down
+
+# 重新构建（代码或依赖变更后）
+docker build -t pushhub:latest .
+docker compose up -d
+```
+
+### 数据持久化
+
+`docker-compose.yml` 把宿主机 `./data/` 映射到容器 `/app/data`，数据库（`pushhub.db`，含渠道配置、API Key、推送日志）全部存在宿主机。删除容器、重新构建镜像都不会丢数据。
+
+> ⚠️ 不要直接删除 `./data/` 目录，否则所有配置与日志会丢失。
+
+### 镜像特点
+
+- 基础镜像 `python:3.11-slim`，体积约 150MB（不含依赖）
+- 不构建独立 Docker 网络，直接用默认 bridge
+- 端口固定 8080（项目硬约束，不接受环境变量覆盖）
+- 容器内时区 `Asia/Shanghai`
+- 异常退出自动重启（`restart: unless-stopped`）
 
 ## 首次启动
 
