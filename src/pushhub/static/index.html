@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PushHub · 统一推送</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
   <link rel="stylesheet" href="/assets/styles.css" />
 </head>
 <body>
@@ -11,6 +12,7 @@
   <!-- ===== 登录页 ===== -->
   <div id="login-view" class="login-view" hidden>
     <div class="login-card">
+      <img src="/assets/favicon.svg" alt="" class="login-logo" />
       <p class="eyebrow">Unified Push Platform</p>
       <h1 id="login-title">PushHub</h1>
       <p class="lead" id="login-lead">按渠道类型调度：同类型层级（主推送 → 备用1 → 备用2 ...）逐个尝试，全失败升级全局紧急层级（并发发送）。</p>
@@ -32,8 +34,11 @@
 
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
-        <div class="name">PushHub</div>
-        <div class="sub">统一推送</div>
+        <img src="/assets/favicon.svg" alt="" class="brand-logo" />
+        <div class="brand-text">
+          <div class="name">PushHub</div>
+          <div class="sub">统一推送</div>
+        </div>
       </div>
       <nav class="sidebar-nav no-scrollbar">
         <button class="nav-item" data-route="dashboard">

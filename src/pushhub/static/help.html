@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PushHub · 调用说明</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
     <style>
       :root {
         --bg-1: #eef2ff;
@@ -266,7 +267,7 @@ resp = requests.post(
         "channel_type": "dingtalk_bot",  # 必填：钉钉机器人
     },
 )</code></pre>
-        <p class="note">常见 <code>channel_type</code> 值：<code>bark</code> / <code>dingtalk_bot</code> / <code>feishu_bot</code> / <code>wecom_bot</code> / <code>telegram_bot</code> / <code>email</code> / <code>pushplus</code> / <code>serverchan</code> 等。完整列表见 WebUI「通知配置」页的渠道类型下拉。</p>
+        <p class="note">常见 <code>channel_type</code> 值：<code>bark</code> / <code>dingtalk_bot</code> / <code>feishu_bot</code> / <code>wecom_bot</code> / <code>telegram_bot</code> / <code>email</code> / <code>pushplus</code> / <code>server_chan</code> 等。完整列表见 WebUI「通知配置」页的渠道类型下拉。</p>
 
         <h3>extra 透传（渠道特有内容字段）</h3>
         <p>渠道配置只保留连接凭证，内容字段通过 <code>extra</code> 按消息传递。key 用渠道原生 API 字段名，与原生调用机制一致。</p>

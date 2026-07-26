@@ -1,6 +1,10 @@
 # PushHub
 
-个人统一推送平台：把一批通知渠道（Bark / 邮箱 / Telegram / 钉钉 / 飞书 / ...）聚合起来对外暴露**一个**鉴权入口，自动做主→备→紧急三层故障切换。
+<p align="center">
+  <img src="docs/images/brand-hero.png" alt="PushHub" width="860" />
+</p>
+
+个人统一推送平台：把一批通知渠道（Bark / 邮箱 / Telegram / 钉钉 / 飞书 / ...）聚合起来对外暴露**一个**鉴权入口，自动做主→备→紧急两级故障切换。
 
 定位：**个人自用**，不负责向第三方分发。所有渠道配置的都是你自己的设备。
 
@@ -115,7 +119,7 @@ python -m pushhub.main
 | `final_channel_id` / `final_channel_name` / `final_channel_type` | 最终成功投递的渠道信息（全失败时为 `null`） |
 | `total_attempts` | 本次请求总共尝试的渠道数（含失败 + 成功） |
 | `escalated` | `true` 表示同类型层级全失败、已自动升级到全局紧急层级 |
-| `error_kind` | 失败时的错误分类 |
+| `results[].error_kind` | 每条尝试记录的错误分类（`rate_limit` / `auth` / `config` / `network` / `channel_error` / `none`），详见 `results` 数组 |
 
 完整字段说明见 [API_CALLING.md](API_CALLING.md) 或 `/api/help` 页。
 
@@ -170,7 +174,7 @@ python -m pushhub.main
 ```
 
 - `content_type` 可选 `plain` / `markdown` / `html`，默认 `plain`。
-- `channel_type` 可选，指定后仅在该类型的启用渠道里走调度；不传则走所有渠道全局调度。外部程序只需知道"我要钉钉推送"，不需知道具体渠道 ID。
+- `channel_type` **必填**：指定渠道类型（如 `dingtalk_bot`），系统在该类型的启用渠道里走同类型层级调度；全失败自动升级到全局紧急层级。外部程序只需告诉 PushHub "我要发到钉钉"，不需知道具体渠道 ID。
 - 需要附件时传 `attachments`（目前仅 email 渠道支持）。
 
 调用示例：

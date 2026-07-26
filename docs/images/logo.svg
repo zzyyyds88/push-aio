@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <!-- 主体蓝色渐变（Apple Blue） -->
+    <linearGradient id="hubGrad" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5EB4FF"/>
+      <stop offset="0.5" stop-color="#2E8DFF"/>
+      <stop offset="1" stop-color="#004FAD"/>
+    </linearGradient>
+    <!-- 外围节点渐变（略浅，制造层次） -->
+    <linearGradient id="nodeGrad" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7AC0FF"/>
+      <stop offset="1" stop-color="#0A6FE0"/>
+    </linearGradient>
+    <!-- 中心高光（液态玻璃质感） -->
+    <radialGradient id="hubHighlight" cx="0.35" cy="0.3" r="0.7">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- 中心外发光 -->
+    <filter id="hubGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- 6 条放射线（连接中心 hub 与外围节点），从中心向外有渐细效果 -->
+  <g stroke="url(#hubGrad)" stroke-width="2.2" stroke-linecap="round" opacity="0.85">
+    <line x1="32" y1="32" x2="32" y2="11"/>
+    <line x1="32" y1="32" x2="50.2" y2="21.5"/>
+    <line x1="32" y1="32" x2="50.2" y2="42.5"/>
+    <line x1="32" y1="32" x2="32" y2="53"/>
+    <line x1="32" y1="32" x2="13.8" y2="42.5"/>
+    <line x1="32" y1="32" x2="13.8" y2="21.5"/>
+  </g>
+
+  <!-- 6 个外围节点（代表多渠道：钉钉/Bark/邮件/飞书/Telegram/...） -->
+  <g fill="url(#nodeGrad)">
+    <circle cx="32" cy="11" r="3.4"/>
+    <circle cx="50.2" cy="21.5" r="3.4"/>
+    <circle cx="50.2" cy="42.5" r="3.4"/>
+    <circle cx="32" cy="53" r="3.4"/>
+    <circle cx="13.8" cy="42.5" r="3.4"/>
+    <circle cx="13.8" cy="21.5" r="3.4"/>
+  </g>
+  <!-- 外围节点高光（液态玻璃质感） -->
+  <g fill="#FFFFFF" opacity="0.6">
+    <circle cx="31.2" cy="10.2" r="1"/>
+    <circle cx="49.4" cy="20.7" r="1"/>
+    <circle cx="49.4" cy="41.7" r="1"/>
+    <circle cx="31.2" cy="52.2" r="1"/>
+    <circle cx="13" cy="41.7" r="1"/>
+    <circle cx="13" cy="20.7" r="1"/>
+  </g>
+
+  <!-- 中心 hub（带发光） -->
+  <g filter="url(#hubGlow)">
+    <circle cx="32" cy="32" r="9" fill="url(#hubGrad)"/>
+    <!-- 顶部高光（液态玻璃） -->
+    <circle cx="32" cy="32" r="9" fill="url(#hubHighlight)"/>
+    <!-- 中心白色内点 -->
+    <circle cx="32" cy="32" r="3.2" fill="#FFFFFF"/>
+    <circle cx="32" cy="32" r="1.4" fill="#2E8DFF"/>
+  </g>
+</svg>

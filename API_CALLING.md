@@ -4,6 +4,61 @@
 
 > 在线版本：服务启动后访问 `http://<your-host>:8080/api/help`。
 
+## 快速对接流程
+
+把一个外部程序接入 PushHub 只需 4 步：
+
+1. **拿到 API Key**：让 PushHub 部署者在 WebUI「系统设置」页把 Key 给你（与 WebUI 登录密码是同一把）。没有 Key 时所有 `/api/*` 接口都返回 `401`（`/api/health`、`/api/help` 除外）。
+2. **确认渠道类型**：决定你要发到哪种渠道，常用值见下表。完整列表（含 23 个渠道）见 WebUI「新增渠道」页下拉，或调 `GET /admin/api/channel-types` 程序化查询。
+
+   | channel_type | 说明 |
+   |---|---|
+   | `dingtalk_bot` | 钉钉群机器人 |
+   | `bark` | Bark（iOS） |
+   | `feishu_bot` | 飞书/Lark 自定义机器人 |
+   | `wecom_bot` / `wecom_app` | 企业微信群机器人 / 应用消息 |
+   | `telegram_bot` | Telegram Bot |
+   | `email` | SMTP 邮件（唯一支持 `target` 收件人） |
+   | `pushplus` / `server_chan` / `pushdeer` / `wxpusher` | 国内常见微信派推送 |
+   | `gotify` / `ntfy` | 自部署推送服务 |
+
+3. **构造请求**：`POST /api/notify`，请求头带 `X-API-Key`，请求体只需 `title` / `content` / `channel_type` 三个核心字段。**不需要也不允许**传 `channel_ids`、`priority`、`force_emergency` 等调度字段——同类型层级（主推送 → 备用1 → 备用2 ...）和全局紧急层级（所有紧急渠道并发）的切换由系统内部固定执行。
+4. **读响应**：判断 `success` 是否为 `true`，读 `final_role`（`primary` / `backup` / `emergency`）就知道最终走的是主推送、备用推送还是紧急渠道，`request_id` 用于在 WebUI 日志页追溯。
+
+### 最简对接代码（Python）
+
+```python
+import requests
+
+PUSHHUB_URL = "http://<your-host>:8080"
+PUSHHUB_KEY = "<你的 API Key>"
+
+def push(title: str, content: str, channel_type: str = "dingtalk_bot") -> dict:
+    """推送到 PushHub。返回完整响应体，失败时 success=False。"""
+    resp = requests.post(
+        f"{PUSHHUB_URL}/api/notify",
+        headers={"X-API-Key": PUSHHUB_KEY},
+        json={"title": title, "content": content, "channel_type": channel_type},
+        timeout=15,
+    )
+    return resp.json()
+
+# 用法
+result = push("任务完成", "已执行完毕", channel_type="dingtalk_bot")
+if not result["success"]:
+    # 所有渠道都失败，可记录 request_id 供部署者排查
+    print(f"推送失败，request_id={result['request_id']}")
+```
+
+### 调用方最佳实践
+
+- **超时设置**：单次 `/api/notify` 调用建议 `timeout=15` 秒。系统内部已对每个渠道做 15 秒超时控制 + 1 次网络重试，调用方不需要自己实现重试。
+- **不要重试 422**：请求体校验失败（多传字段 / 缺必填 / 类型错误）是程序 bug，重试不会成功。修正请求体即可。
+- **401 立即停止**：API Key 错误，重试无意义。提示部署者检查 Key。
+- **5xx 可重试**：服务器内部错误，可指数退避重试 2-3 次。
+- **`success=false` 不要盲目重试**：所有渠道都已尝试过，重试只会再次走完同一条链路。若需提高送达率，应让部署者在 WebUI 增加更多备用 / 紧急渠道，而不是调用方重试。
+- **批量推送节流**：高频率推送应在调用方做本地队列 + 节流，避免触发各渠道限流（如钉钉每机器人每分钟 20 条）。
+
 ## 接口概览
 
 | 方法 | 路径 | 鉴权 | 用途 |
@@ -154,7 +209,8 @@ print(resp.json())
 | `final_channel_name` | 最终成功投递的渠道名称（全失败时为 `null`） |
 | `final_channel_type` | 最终成功投递的渠道类型，如 `bark` / `dingtalk_bot`（全失败时为 `null`） |
 | `total_attempts` | 本次请求总共尝试的渠道数（含失败 + 成功） |
-| `error_kind` | 失败时的错误分类：`rate_limit`(限流) / `auth`(认证) / `config`(配置) / `network`(网络) / `channel_error`(业务错误) |
+
+> 错误分类不在顶层响应字段中，而是在每条尝试记录里：`results[].error_kind` / `main_attempts[].error_kind` / `emergency_attempts[].error_kind`，取值为 `rate_limit`(限流) / `auth`(认证) / `config`(配置) / `network`(网络) / `channel_error`(业务错误) / `none`(未分类)。
 
 ## 调度策略
 
