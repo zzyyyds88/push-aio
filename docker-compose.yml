@@ -2,6 +2,7 @@ services:
   pushhub:
     image: pushhub:latest
     container_name: pushhub
+    network_mode: bridge
     ports:
       - "8080:8080"
     volumes:
